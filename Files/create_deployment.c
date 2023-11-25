@@ -198,7 +198,9 @@ int main(int argc, char *argv[]){
 		int n_clients = atoi(argv[index++]);
 		int ndata_clients = atoi(argv[index++]);
 		int att_projs = atoi(argv[index++]);
-		char* traces_file = bprintf("../%s", argv[index++]);
+		char* traces_file = calloc(strlen( argv[index]) + 4, 1);
+		strcpy(traces_file, "../");
+		strcat(traces_file, argv[index++]);
 		FILE *fd_traces = fopen(traces_file, "r");
 		free(traces_file);
 
