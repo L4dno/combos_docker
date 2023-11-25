@@ -27,5 +27,10 @@ I believe it won't work as it because my files are specific for my host. I can s
 - I close eyes on freeing resources. They might leak a lot.
 - I've run valgrind many times to fix UB. The last time the output wasn't clean yet, so fixes yet to be done.
 - I'm not sure about how an asynchronous communication works with a synchronous one in this project. I would like to spend time to understand it better.
-- there is a piece of code ```workunit->times[reply->result_number]``` in the original version. In my current understanding, a size of ```workunit->times`` correlates to ```results```, when ```reply->result_number``` is proportional to ```tasks```, so I've got ```out_of_range exception```.
+- there is a piece of code ```workunit->times[reply->result_number]``` in the original version. In my current understanding, a size of ```workunit->times``` correlates to ```results```, when ```reply->result_number``` is proportional to ```tasks```, so I've got ```out_of_range exception```.
 - my intrusive lists are structure with ```task-s``` as members. Probably the correct way is to keep pointers ```task_t-s```.
+
+
+## Epilog
+Scheme that helps me to understand what's going on:
+[draw.io file](https://drive.google.com/file/d/1AiNDxQ6wiof9eOykej56L1AG8mgznK_Z/view?usp=sharing)
