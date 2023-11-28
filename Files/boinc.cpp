@@ -31,21 +31,21 @@ namespace xbt = simgrid::xbt;
 
 XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc simulator");
 
-#define WARM_UP_TIME 20 // Warm up time in hours
+#define WARM_UP_TIME 20			// Warm up time in hours
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400 * 365 // One year without client activity, only to finish simulation for a while
-#define MAX_SIMULATED_TIME 100         // Simulation time in hours
+#define MAX_SIMULATED_TIME 100		// Simulation time in hours
 #define WORK_FETCH_PERIOD 60           // Work fetch period
 #define KB 1024                        // 1 KB in bytes
 #define PRECISION 0.00001              // Accuracy (used in client_work_fetch())
 #define CREDITS_CPU_S 0.002315         // Credits per second (1 GFLOP machine)
-#define NUMBER_PROJECTS 1              // Number of projects
-#define NUMBER_SCHEDULING_SERVERS 1    // Number of scheduling servers
-#define NUMBER_DATA_SERVERS 1          // Number of data servers
-#define NUMBER_DATA_CLIENT_SERVERS 1   // Number of data client servers
+#define NUMBER_PROJECTS 1		// Number of projects
+#define NUMBER_SCHEDULING_SERVERS 1	// Number of scheduling servers
+#define NUMBER_DATA_SERVERS 1		// Number of data servers
+#define NUMBER_DATA_CLIENT_SERVERS 1	// Number of data client servers
 #define NUMBER_CLIENT_GROUPS 1         // Number of client groups
-#define NUMBER_CLIENTS 1000            // Number of clients
-#define NUMBER_DATA_CLIENTS 100        // Number of data clients
+#define NUMBER_CLIENTS 1000		// Number of clients
+#define NUMBER_DATA_CLIENTS 100		// Number of data clients
 #define NUMBER_ORDINARY_CLIENTS (NUMBER_CLIENTS - NUMBER_DATA_CLIENTS)
 #define REQUEST_SIZE 10 * KB // Request size
 #define REPLY_SIZE 10 * KB   // Reply size
@@ -277,7 +277,7 @@ struct project
     task_t running_task;    // which is the task that is running on thread */
     sg4::ActorPtr thread;   // thread running the tasks of this project */
     client_t client;        // Client pointer
-    TaskSwagT tasks;        // nearly runnable jobs of project, insert at tail to keep ordered
+    TaskSwagT tasks_swag;   // nearly runnable jobs of project, insert at tail to keep ordered
     SimTaskSwagT sim_tasks; // nearly runnable jobs of project, insert at tail to keep ordered
     RunListSwagT run_list;  // list of jobs running, normally only one tasks, but if a deadline may occur it can put another here
     sg4::MutexPtr tasks_ready_mutex;
@@ -644,7 +644,6 @@ int memoryUsage()
 /*
  *	Free task
  */
-
 static void free_task(task_t task)
 {
     if (task->project->running_task == task)
@@ -663,7 +662,7 @@ static void free_task(task_t task)
         xbt::intrusive_erase(task->project->sim_tasks, *task);
 
     if (task->tasks_hookup.is_linked())
-        xbt::intrusive_erase(task->project->tasks, *task);
+        xbt::intrusive_erase(task->project->tasks_swag, *task);
 
     delete task;
 }
@@ -680,7 +679,7 @@ static void free_project(project_t proj)
     clean_queue(proj->number_executed_task);
     clean_queue(proj->workunit_executed_task);
 
-    proj->tasks.clear();
+    proj->tasks_swag.clear();
     proj->sim_tasks.clear();
     proj->run_list.clear();
 }
@@ -2762,7 +2761,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
         t->msg_task->set_name(t->name);
         t->msg_task->set_flops_amount(t->duration);
         t->project = proj;
-        proj->tasks.push_back(*t);
+        proj->tasks_swag.push_back(*t);
     }
 
     // Increase the total number of tasks received
@@ -2795,7 +2794,7 @@ static void client_update_shortfall(client_t client)
     for (auto &[key, proj] : projects)
     {
         total_time_proj = 0;
-        for (auto &task : proj->tasks)
+        for (auto &task : proj->tasks_swag)
         {
             total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
 
@@ -2997,7 +2996,7 @@ static void client_update_debt(client_t client)
     for (auto &[key, proj] : projects)
     {
         a += proj->wall_cpu_time;
-        if (!proj->tasks.empty() || !proj->run_list.empty())
+        if (!proj->tasks_swag.empty() || !proj->run_list.empty())
         {
             sum_priority_run_proj += proj->priority;
             num_project_short++;
@@ -3015,7 +3014,7 @@ static void client_update_debt(client_t client)
         proj->long_debt += w - proj->wall_cpu_time;
         /* http://www.boinc-wiki.info/Short_term_debt#Short_term_debt
          * if no actions in project short debt = 0 */
-        if (proj->tasks.empty() && proj->run_list.empty())
+        if (proj->tasks_swag.empty() && proj->run_list.empty())
             proj->short_debt = 0;
         total_debt_short += proj->short_debt;
         total_debt_long += proj->long_debt;
@@ -3030,7 +3029,7 @@ static void client_update_debt(client_t client)
         /* reset wall_cpu_time */
         proj->wall_cpu_time = 0;
 
-        if (proj->tasks.empty() && proj->run_list.empty())
+        if (proj->tasks_swag.empty() && proj->run_list.empty())
             continue;
         proj->short_debt -= (total_debt_short / num_project_short);
         if (proj->short_debt > MAX_SHORT_TERM_DEBT)
@@ -3073,9 +3072,9 @@ static void client_update_simulate_finish_time(client_t client)
 
     for (auto &[key, proj] : projects)
     {
-        total_tasks += proj->tasks.size() + proj->run_list.size();
+        total_tasks += proj->tasks_swag.size() + proj->run_list.size();
 
-        for (auto &task : proj->tasks)
+        for (auto &task : proj->tasks_swag)
         {
             task.sim_remains = task.msg_task->get_remaining() * client->factor;
             proj->sim_tasks.push_back(task);
@@ -3105,19 +3104,9 @@ static void client_update_simulate_finish_time(client_t client)
         for (auto &[key, proj] : projects)
         {
             task_t task;
-            // I've gotten infinitive loop here. Intrusive list is organized as a cycled structure.
-            // However, in other places I didn't face it
-            int task_overall = proj->sim_tasks.size();
-            int task_ind = 0;
 
-            for (auto it = proj->sim_tasks.begin(); task_ind < task_overall; ++it, ++task_ind)
+            for (auto &task : proj->sim_tasks)
             {
-                if (it == proj->sim_tasks.end())
-                {
-                    continue;
-                }
-
-                auto &task = *it;
                 task.sim_finish = clock_sim + (task.sim_remains / power) * (sum_priority / proj->priority) * proj->sim_tasks.size();
                 if (min_task == NULL || min > task.sim_finish)
                 {
@@ -3131,11 +3120,8 @@ static void client_update_simulate_finish_time(client_t client)
         /* update remains of tasks */
         for (auto &[key, proj] : projects)
         {
-            int sim_tasks_cnt = proj->sim_tasks.size();
-            int sim_tasks_ind = 0;
-            for (auto it = proj->sim_tasks.begin(); sim_tasks_ind < sim_tasks_cnt; ++it, ++sim_tasks_ind)
+            for (auto &task : proj->sim_tasks)
             {
-                auto &task = *it;
                 task.sim_remains -= (min - clock_sim) * power * (proj->priority / sum_priority) / proj->sim_tasks.size();
             }
         }
@@ -3158,7 +3144,7 @@ static void client_update_deadline_missed(client_t client)
     for (auto &[key, proj] : projects)
     {
         //  was x b t_swag_foreach_safe
-        for (auto &task : proj->tasks)
+        for (auto &task : proj->tasks_swag)
         {
             client->deadline_missed.erase(&task);
 
@@ -3292,7 +3278,7 @@ static void client_cpu_scheduling(client_t client)
         //  update debt (anticipated). It isn't needed due to we only schedule one job per host.
 
         if (task->tasks_hookup.is_linked())
-            xbt::intrusive_erase(task->project->tasks, *task);
+            xbt::intrusive_erase(task->project->tasks_swag, *task);
 
         task->project->run_list.push_back(*task);
 
@@ -3311,7 +3297,7 @@ static void client_cpu_scheduling(client_t client)
         for (auto it = projects.begin(); it != projects.end(); ++it)
         {
             proj = it->second;
-            if (((great_debt_proj == NULL) || (great_debt < proj->short_debt)) && (proj->run_list.size() || proj->tasks.size()))
+            if (((great_debt_proj == NULL) || (great_debt < proj->short_debt)) && (proj->run_list.size() || proj->tasks_swag.size()))
             {
                 great_debt_proj = proj;
                 great_debt = proj->short_debt;
@@ -3332,10 +3318,10 @@ static void client_cpu_scheduling(client_t client)
         {
             task = &(*great_debt_proj->run_list.begin());
         }
-        else if (!great_debt_proj->tasks.empty())
+        else if (!great_debt_proj->tasks_swag.empty())
         {
-            task = &(*great_debt_proj->tasks.begin());
-            great_debt_proj->tasks.pop_front();
+            task = &(*great_debt_proj->tasks_swag.begin());
+            great_debt_proj->tasks_swag.pop_front();
             great_debt_proj->run_list.push_front(*task);
         }
         if (task)
