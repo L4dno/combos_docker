@@ -598,10 +598,6 @@ group_t _group_info;       // Client groups information
 sg4::MutexPtr _oclient_mutex; // Ordinary client mutex
 sg4::MutexPtr _dclient_mutex; // Data client mutex
 
-/* Asynchronous communication */
-std::map<std::string, sg4::CommPtr> _sscomm; // Asynchro communications storage (scheduling server with client)
-std::map<std::string, sg4::CommPtr> _dscomm; // Asynchro communications storage (data server with client)
-
 /* Availability statistics */
 int64_t _total_power;       // Total clients power (maximum 2⁶³-1)
 double _total_available;    // Total time clients available
@@ -674,6 +670,16 @@ static void free_task(task_t task)
 
 static void free_project(project_t proj)
 {
+
+    auto clean_queue = []<typename T>(T &q)
+    {
+        while (!q.empty())
+            q.pop();
+    };
+    clean_queue(proj->tasks_ready);
+    clean_queue(proj->number_executed_task);
+    clean_queue(proj->workunit_executed_task);
+
     proj->tasks.clear();
     proj->sim_tasks.clear();
     proj->run_list.clear();
@@ -786,7 +792,7 @@ void print_results(int, char **)
         pdatabase_t database = &_pdatabase[i]; // Server info pointer
 
         // Print results
-        printf("\n ####################  %s  ####################\n", database->project_name);
+        printf("\n ####################  %s  ####################\n", database->project_name.c_str());
         printf("\n Simulation ends in %'g h (%'g sec)\n\n", sg4::Engine::get_clock() / 3600.0 - WARM_UP_TIME, sg4::Engine::get_clock() - maxwt);
 
         double ocload = 0, dcload = 0;
@@ -856,6 +862,23 @@ void print_results(int, char **)
     }
 
     fflush(stdout);
+}
+
+/*
+ * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
+ */
+void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)
+{
+    do
+    {
+        ssize_t ready_comm_ind = sg4::Comm::test_any(pending_comms);
+        if (ready_comm_ind == -1)
+        {
+            break;
+        }
+        swap(pending_comms.back(), pending_comms[ready_comm_ind]);
+        pending_comms.pop_back();
+    } while (!pending_comms.empty());
 }
 
 /*
@@ -1254,7 +1277,7 @@ int file_deleter(pdatabase_t database, std::string workunit_number)
                workunit->ndata_clients_confirmed == workunit->number_past_through_assimilator.load();
     };
 
-    workunit_t workunit = database->current_workunits[workunit_number];
+    workunit_t workunit = database->current_workunits.at(workunit_number);
     if (can_delete_condition(workunit))
     {
         // The workunit is ready to be deleted
@@ -1288,7 +1311,7 @@ int file_deleter(pdatabase_t database, std::string workunit_number)
         else
         {
             // The workunit should not be deleted yet, so push it again in the queue
-            database->current_deletions.push(std::move(workunit));
+            database->current_deletions.push(workunit);
         }
     }
 
@@ -1333,7 +1356,7 @@ int assimilator(int argc, char *argv[])
         lock.unlock();
 
         // Get completed workunit
-        workunit_t workunit = database->current_workunits[workunit_number];
+        workunit_t workunit = database->current_workunits.at(workunit_number);
 
         // Update workunit stats
         if (workunit->status == VALID)
@@ -1368,7 +1391,6 @@ result_t select_result(int project_number, request_t req)
         database->wg_full->notify_all();
 
     // Calculate number of tasks
-    // you
     result->number_tasks = (int32_t)floor(req->percentage / ((double)database->job_duration / req->power));
     if (result->number_tasks == 0)
         result->number_tasks = (int32_t)1;
@@ -1386,7 +1408,6 @@ result_t select_result(int project_number, request_t req)
         task->deadline = database->delay_bound;
         task->start = sg4::Engine::get_clock();
         task->heap_index = -1;
-        // task->comp_cost = task->duration;
         result->tasks[i] = task;
     }
 
@@ -1425,7 +1446,6 @@ int scheduling_server_requests(int argc, char *argv[])
     // Wait until database is ready
     database->barrier->wait();
 
-    // todo: can it be the problem?
     /*
         Set asynchronous mailbox mode in order to receive requests in spite of
         the fact that the server is not calling MSG_task_receive()
@@ -1499,6 +1519,8 @@ int scheduling_server_dispatcher(int argc, char *argv[])
     int32_t scheduling_server_number;  // Scheduling_server_number
     double t0, t1;                     // Time measure
 
+    std::vector<sg4::CommPtr> _sscomm; // Asynchro communications storage (scheduling server with client)
+
     // Check number of arguments
     if (argc != 3)
     {
@@ -1548,9 +1570,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             database->v_mutex->lock();
 
             // Call validator
-            auto copy_to_send = new s_reply_t();
-            *copy_to_send = *reinterpret_cast<reply_t>(msg->content);
-            database->current_validations.push(copy_to_send);
+            database->current_validations.push(reinterpret_cast<reply_t>(msg->content));
             database->ncurrent_validations++;
 
             database->v_empty->notify_all();
@@ -1584,7 +1604,10 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             comm = ans_mailbox->put_async(result, KB * result->ninput_files);
 
             // Store the asynchronous communication created in the dictionary
-            _sscomm[caller_reply_mailbox] = comm;
+
+            delete_completed_communications(_sscomm);
+            _sscomm.push_back(comm);
+
             switch (msg->datatype)
             {
             case ssmessage_content::SReplyT:
@@ -1737,6 +1760,8 @@ int data_server_dispatcher(int argc, char *argv[])
     dserver_info = &_dserver_info[server_number]; // Data server info pointer
     database = &_pdatabase[project_number];       // Boinc server info pointer
 
+    std::vector<sg4::CommPtr> _dscomm; // Asynchro communications storage (data server with client)
+
     while (1)
     {
         std::unique_lock lock(*dserver_info->mutex);
@@ -1783,7 +1808,9 @@ int data_server_dispatcher(int argc, char *argv[])
             comm = sg4::Mailbox::by_name(req->answer_mailbox)->put_async(new int(1), database->input_file_size);
 
             // Store the asynchronous communication created in the dictionary
-            _dscomm[req->answer_mailbox] = comm;
+
+            delete_completed_communications(_dscomm);
+            _dscomm.push_back(comm);
         }
 
         // Iteration end time
@@ -1808,7 +1835,6 @@ int data_server_dispatcher(int argc, char *argv[])
  */
 int data_client_server_requests(int argc, char *argv[])
 {
-    dcsmessage_t task = NULL;                          // Task
     dcsmessage_t msg = NULL;                           // Data client message
     pdatabase_t database = NULL;                       // Project database
     dcserver_t dcserver_info = NULL;                   // Data client server info
@@ -1841,16 +1867,7 @@ int data_client_server_requests(int argc, char *argv[])
     {
         // Receive message
 
-        try
-        {
-
-            msg = mailbox->get<dcsmessage>();
-        }
-        catch (const std::exception &e)
-        {
-            // std::cout<< "exception in the world " << e.what() << std::endl;
-            throw e;
-        }
+        msg = mailbox->get<dcsmessage>();
 
         // Termination message
         if (msg->type == TERMINATION)
@@ -1975,7 +1992,7 @@ int data_client_server_dispatcher(int argc, char *argv[])
                          workunit->ndata_clients == 0))
                     {
                         workunit->ndata_clients++;
-                        // todo: it is done inside ... loop?
+                        // todo: is it done inside ... loop?
                         ans_msg->answer_mailbox = dcserver_info->server_name;
                         ans_msg->nworkunits++;
                         ans_msg->workunits[workunit->number] = workunit;
@@ -2046,8 +2063,7 @@ int data_client_ask_for_files(ask_for_files_t params)
 
     pdatabase_t database = NULL; // Database
     // group_t group_info = NULL;			// Group information
-    dclient_t dclient_info = NULL; // Data client information
-    // ask_for_files_t params = NULL; // Params
+    dclient_t dclient_info = NULL;         // Data client information
     workunit_t workunit = NULL;            // Workunit
     double storage = 0, max_storage = 0;   // File storage in MB
     char project_number, project_priority; // Project number and priority
@@ -2127,16 +2143,7 @@ int data_client_ask_for_files(ask_for_files_t params)
 
             sg4::Mailbox::by_name(where)->put(dcsrequest, KB);
 
-            try
-            {
-                dcreply = mailbox->get<dcmessage>();
-            }
-            catch (const simgrid::NetworkFailureException &)
-            {
-                // std::cout<< "Get exception in the world " << std::endl;
-                // sg4::this_actor::sleep_for(1800);
-                goto data_client_ask_for_files_evil_label;
-            }
+            dcreply = mailbox->get<dcmessage>();
 
             if (dcreply->nworkunits > 0)
             {
@@ -2182,14 +2189,7 @@ int data_client_ask_for_files(ask_for_files_t params)
                                 // todo: seems that I don't need it? Like, below I have comm.wait, right?... I'm so tired and
                                 // or not - here we get reply and later wait for comm just to destroy it?
 
-                                try
-                                {
-                                    dsinput_file_reply_task = mailbox->get<int>();
-                                }
-                                catch (const simgrid::NetworkFailureException &)
-                                {
-                                    // std::cout<< "exception int he world" << std::endl;
-                                }
+                                dsinput_file_reply_task = mailbox->get<int>();
 
                                 // Timeout reached -> exponential backoff 2^N
                                 /*if(error == MSG_TIMEOUT){
@@ -2204,11 +2204,6 @@ int data_client_ask_for_files(ask_for_files_t params)
                                 database->rfiles_mutex->unlock();
 
                                 storage -= database->input_file_size;
-                                comm = _dscomm[mailbox->get_name()]; // Get connection
-                                _dscomm.erase(mailbox->get_name());  // Remove connection from dict
-                                comm->wait();                        // Wait until communication ends
-                                // comm.~intrusive_ptr();               // Destroy connection
-                                comm = NULL;
                                 delete dsinput_file_reply_task;
                                 dsinput_file_reply_task = NULL;
                                 break;
@@ -2421,6 +2416,8 @@ int data_client_dispatcher(int argc, char *argv[])
 
     dclient_info = &_dclient_info[data_client_number]; // Data client info
 
+    std::vector<sg4::CommPtr> _dscomm;
+
     while (1)
     {
         std::unique_lock lock(*dclient_info->mutex);
@@ -2467,8 +2464,8 @@ int data_client_dispatcher(int argc, char *argv[])
             comm = sg4::Mailbox::by_name(msg->answer_mailbox)->put_async(new int(2), database->input_file_size);
 
             // Store the asynchronous communication created in the dictionary
-            // todo - it was un data_server_dispatcher as welll... is that safe?
-            _dscomm[msg->answer_mailbox] = comm;
+            delete_completed_communications(_dscomm);
+            _dscomm.push_back(comm);
         }
 
         delete (msg);
@@ -2598,8 +2595,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
     // Data server output file reply
     dsmessage_t dsoutput_file = NULL; // Output file message
 
-    std::string server_name;           // Store data server name
-    simgrid::s4u::CommPtr comm = NULL; // Asynchronous communication
+    std::string server_name; // Store data server name
 
     database = &_pdatabase[(int)proj->number]; // Boinc server info pointer
 
@@ -2697,11 +2693,6 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 
     // MSG_task_receive(, ); // Receive reply from scheduling server
     sswork_reply = sg4::Mailbox::by_name(proj->answer_mailbox)->get<result>(); // Get work
-    comm = _sscomm[proj->answer_mailbox];                                      // Get connection
-    _sscomm.erase(proj->answer_mailbox);                                       // Remove connection from dict
-    comm->wait();                                                              // Wait until communication ends
-    // comm.~intrusive_ptr();                                                     // Destroy connection
-    comm = NULL;
 
     // Download input files (or generate them locally)
     if (uniform_int(0, 99) < (int)database->ifgl_percentage)
@@ -2755,11 +2746,6 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
                 database->rfiles[i]++;
                 database->rfiles_mutex->unlock();
 
-                comm = _dscomm[proj->answer_mailbox]; // Get connection
-                _dscomm.erase(proj->answer_mailbox);  // Remove connection from dict
-                comm->wait();                         // Wait until communication ends
-                // comm.~intrusive_ptr();                // Destroy connection
-                comm = NULL;
                 break;
             }
         }
@@ -2773,6 +2759,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
     {
         task_t t = sswork_reply->tasks[i];
         t->msg_task = simgrid::s4u::Exec::init();
+        t->msg_task->set_name(t->name);
         t->msg_task->set_flops_amount(t->duration);
         t->project = proj;
         proj->tasks.push_back(*t);
@@ -2808,10 +2795,8 @@ static void client_update_shortfall(client_t client)
     for (auto &[key, proj] : projects)
     {
         total_time_proj = 0;
-        int total_i = proj->tasks.size();
         for (auto &task : proj->tasks)
         {
-
             total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
 
             // printf("SHORTFALL(1) %g   %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
@@ -2849,7 +2834,7 @@ static int client_work_fetch(client_t client)
     sg4::this_actor::sleep_for(uniform_ab(0, 3600));
 
     // client_t client = MSG_process_get_data(MSG_process_self());
-    std::map<std::string, project_t> projects = client->projects;
+    std::map<std::string, project_t> &projects = client->projects;
 
     // printf("Running thread work fetch client %s\n", client->name);
 
@@ -2913,7 +2898,6 @@ static int client_work_fetch(client_t client)
 
         if (selected_proj)
         {
-            // you
             // printf("Selected project(%s) shortfall %lf %d\n", selected_proj->name, selected_proj->shortfall, selected_proj->shortfall > 0);
             /* prrs = sum_priority, all projects are potentially runnable */
             work_percentage = std::max(selected_proj->shortfall, client->total_shortfall / client->sum_priority);
@@ -2928,7 +2912,6 @@ FIXME: http://www.boinc-wiki.info/Work-Fetch_Policy */
                 client_ask_for_work(client, selected_proj, work_percentage);
             }
         }
-
         /* workaround to start scheduling tasks at time 0 */
         if (first)
         {
@@ -2964,6 +2947,7 @@ FIXME: http://www.boinc-wiki.info/Work-Fetch_Policy */
         }
         catch (std::exception &e)
         {
+            std::cout << "exception at the line " << __LINE__ << ' ' << e.what() << std::endl;
             // printf("Error %d %d\n", (int)sg4::Engine::get_clock(), (int)max);
         }
     }
@@ -3243,6 +3227,7 @@ static void schedule_job(client_t client, task_t job)
         task_temp->msg_task->cancel();
         // task_temp->msg_task.~intrusive_ptr();
         task_temp->msg_task = sg4::Exec::init();
+        task_temp->msg_task->set_name(task_temp->name);
         task_temp->msg_task->set_flops_amount(remains);
         // printf("Creating task(%s)(%p) again, remains %lf\n", task_temp->name, task_temp, remains);
 
@@ -3313,7 +3298,6 @@ static void client_cpu_scheduling(client_t client)
 
         /* keep the task in deadline heap */
         // printf("((((((((((((((  HEAP PUSH      3\n");
-        // todo: example of operator<:   x b t_heap_push(client->deadline_missed, task, (task->start + task->deadline));
         client->deadline_missed.insert(task);
         schedule_job(client, task);
         return;
@@ -3404,12 +3388,9 @@ static int client_execute_tasks(project_t proj)
 
         // t0 = sg4::Engine::get_clock();
 
-        // is there is blocking?
-
-        // task->msg_task = sg4::this_actor::exec_async(task->comp_cost);
-        task->msg_task->set_host(sg4::this_actor::get_host());
-        task->msg_task->start(); // ?
         // error_t err = MSG_task_execute(task->msg_task);
+        task->msg_task->set_host(sg4::this_actor::get_host());
+        task->msg_task->start();
 
         // if (err == MSG_OK)
         {
@@ -3678,6 +3659,7 @@ int client(int argc, char *argv[])
         catch (std::exception &e)
         {
             time_sim++;
+            std::cout << "exception int the line " << __LINE__ << ' ' << e.what() << std::endl;
         }
     }
 
@@ -3724,7 +3706,7 @@ int client(int argc, char *argv[])
                 msg = new s_ssmessage_t();
                 msg->type = TERMINATION;
                 auto ser_n_mb = _pdatabase[(int)proj->number].scheduling_servers[i];
-                sg4::Mailbox::by_name(ser_n_mb)->put(msg, KB);
+                sg4::Mailbox::by_name(ser_n_mb)->put(msg, 1);
             }
             for (i = 0; i < _pdatabase[(int)proj->number].ndata_clients; i++)
             {
@@ -3732,7 +3714,7 @@ int client(int argc, char *argv[])
                 msg2->type = TERMINATION;
                 auto cl_n_mb = _pdatabase[(int)proj->number].data_clients[i];
 
-                sg4::Mailbox::by_name(cl_n_mb)->put(msg2, KB);
+                sg4::Mailbox::by_name(cl_n_mb)->put(msg2, 1);
             }
         }
     }
@@ -3753,8 +3735,7 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
 
     // printf("Executing test_all\n");
 
-    int i,
-        days, hours, min;
+    int i, days, hours, min;
     double t; // Program time
 
     // sg4::Engine::set_config("network/model:IB");
@@ -3982,6 +3963,4 @@ int main(int argc, char *argv[])
     _dclient_mutex = sg4::Mutex::create();
 
     test_all(argc, argv, e);
-
-    // std::cout<< "FINISH" << std::endl;
 }

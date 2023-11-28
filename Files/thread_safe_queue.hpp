@@ -39,6 +39,13 @@ public:
         return el;
     }
 
+    size_t empty()
+    {
+        std::unique_lock lock(*mutex);
+
+        return data.size();
+    }
+
 private:
     std::queue<T> data;
     sg4::MutexPtr mutex;
