@@ -31,21 +31,21 @@ namespace xbt = simgrid::xbt;
 
 XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc simulator");
 
-#define WARM_UP_TIME 20			// Warm up time in hours
+#define WARM_UP_TIME 20 // Warm up time in hours
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400 * 365 // One year without client activity, only to finish simulation for a while
-#define MAX_SIMULATED_TIME 100		// Simulation time in hours
+#define MAX_SIMULATED_TIME 100         // Simulation time in hours
 #define WORK_FETCH_PERIOD 60           // Work fetch period
 #define KB 1024                        // 1 KB in bytes
 #define PRECISION 0.00001              // Accuracy (used in client_work_fetch())
 #define CREDITS_CPU_S 0.002315         // Credits per second (1 GFLOP machine)
-#define NUMBER_PROJECTS 1		// Number of projects
-#define NUMBER_SCHEDULING_SERVERS 1	// Number of scheduling servers
-#define NUMBER_DATA_SERVERS 1		// Number of data servers
-#define NUMBER_DATA_CLIENT_SERVERS 1	// Number of data client servers
+#define NUMBER_PROJECTS 1              // Number of projects
+#define NUMBER_SCHEDULING_SERVERS 1    // Number of scheduling servers
+#define NUMBER_DATA_SERVERS 1          // Number of data servers
+#define NUMBER_DATA_CLIENT_SERVERS 1   // Number of data client servers
 #define NUMBER_CLIENT_GROUPS 1         // Number of client groups
-#define NUMBER_CLIENTS 1000		// Number of clients
-#define NUMBER_DATA_CLIENTS 100		// Number of data clients
+#define NUMBER_CLIENTS 1000            // Number of clients
+#define NUMBER_DATA_CLIENTS 100        // Number of data clients
 #define NUMBER_ORDINARY_CLIENTS (NUMBER_CLIENTS - NUMBER_DATA_CLIENTS)
 #define REQUEST_SIZE 10 * KB // Request size
 #define REPLY_SIZE 10 * KB   // Reply size
@@ -811,13 +811,13 @@ void print_results(int, char **)
                 dcload += database->dcrfiles[j];
         }
 
-        printf("OC: %f, DC: %f\n", ocload, dcload);
+        // printf("OC: %f\n DC: %f\n", ocload, dcload);
 
         printf("\n");
         for (int j = 0; j < (int64_t)database->nscheduling_servers; j++, l++)
-            printf("  Scheduling server %" PRId64 ":\tBusy: %0.1f%%\n", j, _sserver_info[l].time_busy / maxst * 100);
+            printf("  Scheduling server %" PRId64 " Busy: %0.1f%%\n", j, _sserver_info[l].time_busy / maxst * 100);
         for (int j = 0; j < (int64_t)database->ndata_servers; j++, k++)
-            printf("  Data server %" PRId64 ":\tBusy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, _dserver_info[k].time_busy / maxst * 100, (ocload * database->input_file_size + database->dsuploads * database->output_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst), (dcload * database->input_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst));
+            printf("  Data server %" PRId64 " Busy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, _dserver_info[k].time_busy / maxst * 100, (ocload * database->input_file_size + database->dsuploads * database->output_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst), (dcload * database->input_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst));
         printf("\n  Number of clients: %'d\n", database->nclients);
         printf("  Number of ordinary clients: %'d\n", database->nordinary_clients);
         printf("  Number of data clients: %'d\n\n", database->ndata_clients);
@@ -857,6 +857,8 @@ void print_results(int, char **)
         printf("  Workunits error: \t\t%'" PRId64 " (%0.1f%%)\n", database->nerror_workunits, (double)database->nerror_workunits / database->nworkunits * 100);
         printf("  Throughput: \t\t\t%'0.1f mens/s\n", (double)database->nmessages_received / maxst);
         printf("  Credit granted: \t\t%'" PRId64 " credits\n", (long int)database->total_credit);
+        printf("  FLOPS in split: \t\t %0.1f and %0.1f and %0.1f end\n\n", (double)database->nvalid_results, (double)database->job_duration, maxst);
+
         printf("  FLOPS average: \t\t%'" PRId64 " GFLOPS\n\n", (int64_t)((double)database->nvalid_results * (double)database->job_duration / maxst / 1000000000.0));
     }
 
@@ -2853,6 +2855,7 @@ static int client_work_fetch(client_t client)
             sleep = client->suspended;
             client->suspended = 0;
             client->ask_for_work_mutex->unlock();
+            printf("sleep time: %f\n", sleep);
             sg4::this_actor::sleep_for(sleep);
             client->ask_for_work_mutex->lock();
 
@@ -3379,7 +3382,10 @@ static int client_execute_tasks(project_t proj)
         task->msg_task->start();
 
         // if (err == MSG_OK)
+        try
         {
+            task->msg_task->wait();
+
             number = (int32_t)atoi(task->name.c_str());
             // printf("s%d TERMINO EJECUCION DE %d en %f\n", proj->number, number, sg4::Engine::get_clock());
             proj->number_executed_task.push(number);
@@ -3403,8 +3409,11 @@ static int client_execute_tasks(project_t proj)
             proj->client->sched_cond->notify_all();
             continue;
         }
+        catch (simgrid::CancelException &)
+        {
+        }
 
-        printf("%f: ---(2)--------Task(%s)(%p) from project(%s) error finished  duration = %g   power=  %g\n", sg4::Engine::get_clock(), task->name, task, proj->name, task->msg_task->get_remaining(), sg4::this_actor::get_host()->get_speed());
+        // printf("%f: ---(2)--------Task(%s)(%p) from project(%s) error finished  duration = %g   power=  %g\n", sg4::Engine::get_clock(), task->name, task, proj->name, task->msg_task->get_remaining(), sg4::this_actor::get_host()->get_speed());
         task->running = 0;
         proj->running_task = NULL;
         free_task(task);
@@ -3754,15 +3763,15 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
     e.run();
     // printf( " Simulation time %g sec. %g horas\n", sg4::Engine::get_clock(), sg4::Engine::get_clock()/3600);
 
-    for (i = 0; i < NUMBER_CLIENT_GROUPS; i++)
-    {
-        printf(" Group %d. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n", i, (double)_group_info[i].total_power / _group_info[i].n_clients / 1000000000.0, _group_info[i].total_available * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable), (_group_info[i].total_notavailable) * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable));
-        _total_power += _group_info[i].total_power;
-        _total_available += _group_info[i].total_available;
-        _total_notavailable += _group_info[i].total_notavailable;
-    }
+    // for (i = 0; i < NUMBER_CLIENT_GROUPS; i++)
+    // {
+    //     printf(" Group %d. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n", i, (double)_group_info[i].total_power / _group_info[i].n_clients / 1000000000.0, _group_info[i].total_available * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable), (_group_info[i].total_notavailable) * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable));
+    //     _total_power += _group_info[i].total_power;
+    //     _total_available += _group_info[i].total_available;
+    //     _total_notavailable += _group_info[i].total_notavailable;
+    // }
 
-    printf("\n Clients. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n\n", (double)_total_power / NUMBER_CLIENTS / 1000000000.0, _total_available * 100.0 / (_total_available + _total_notavailable), (_total_notavailable) * 100.0 / (_total_available + _total_notavailable));
+    // printf("\n Clients. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n\n", (double)_total_power / NUMBER_CLIENTS / 1000000000.0, _total_available * 100.0 / (_total_available + _total_notavailable), (_total_notavailable) * 100.0 / (_total_available + _total_notavailable));
 
     t = (double)time(NULL) - t;    // Program time
     days = (int)(t / (24 * 3600)); // Calculate days
@@ -3771,7 +3780,7 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
     t -= (hours * 3600);
     min = (int)(t / 60); // Calculate minutes
     t -= (min * 60);
-    printf(" Execution time:\n %d days %d hours %d min %d s\n\n", days, hours, min, (int)round(t));
+    // printf(" Execution time:\n %d days %d hours %d min %d s\n\n", days, hours, min, (int)round(t));
 
 } /* end_of_test_all */
 
