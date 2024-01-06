@@ -1,3 +1,4 @@
+#pragma once
 #include <queue>
 #include <simgrid/cond.h>
 // #include <simgrid/engine.h>

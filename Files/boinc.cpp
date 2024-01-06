@@ -19,24 +19,39 @@
 #include <simgrid/engine.h>
 #include <simgrid/s4u.hpp>
 #include <boost/intrusive/list.hpp>
-#include "thread_safe_queue.hpp"
 
-namespace sg4 = simgrid::s4u;
-namespace intrusive = boost::intrusive;
-namespace xbt = simgrid::xbt;
+#include "components/types.hpp"
+#include "components/shared.hpp"
+#include "components/scheduler.hpp"
 
 /* Create a log channel to have nice outputs. */
 #include "xbt/asserts.h"
 #include "rand.h"
 
+typedef struct request s_request_t, *request_t;                   // Client request to scheduling server
+typedef struct reply s_reply_t, *reply_t;                         // Client reply to scheduling server
+typedef struct dsmessage s_dsmessage_t, *dsmessage_t;             // Message to data server
+typedef struct dcsrequest s_dcsrequest_t, *dcsrequest_t;          // Data client request to data client server
+typedef struct dcsreply s_dcsreply_t, *dcsreply_t;                // Message to data server
+typedef struct dcsmessage s_dcsmessage_t, *dcsmessage_t;          // Message to data client server
+typedef struct dcmessage s_dcmessage_t, *dcmessage_t;             // Message to data server
+typedef struct dcworkunit s_dcWorkunitT, *dcWorkunitT;            // Data client workunit
+typedef struct client s_client_t, *client_t;                      // Client
+typedef struct data_server s_dserver_t, *dserver_t;               // Data server
+typedef struct data_client_server s_dcserver_t, *dcserver_t;      // Data client server
+typedef struct data_client s_dclient_t, *dclient_t;               // Data client
+typedef struct client_group s_group_t, *group_t;                  // Client group
+typedef struct ask_for_files s_ask_for_files_t, *ask_for_files_t; // Ask for files params
+
+namespace sg4 = simgrid::s4u;
+namespace intrusive = boost::intrusive;
+namespace xbt = simgrid::xbt;
+
 XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc simulator");
 
-#define WARM_UP_TIME 20 // Warm up time in hours
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400 * 365 // One year without client activity, only to finish simulation for a while
-#define MAX_SIMULATED_TIME 100         // Simulation time in hours
 #define WORK_FETCH_PERIOD 60           // Work fetch period
-#define KB 1024                        // 1 KB in bytes
 #define PRECISION 0.00001              // Accuracy (used in client_work_fetch())
 #define CREDITS_CPU_S 0.002315         // Credits per second (1 GFLOP machine)
 #define NUMBER_PROJECTS 1              // Number of projects
@@ -57,10 +72,6 @@ int work_generator(int argc, char *argv[]);
 int validator(int argc, char *argv[]);
 int assimilator(int argc, char *argv[]);
 
-/* Scheduling server */
-int scheduling_server_requests(int argc, char *argv[]);
-int scheduling_server_dispatcher(int argc, char *argv[]);
-
 /* Data server */
 int data_server_requests(int argc, char *argv[]);
 int data_server_dispatcher(int argc, char *argv[]);
@@ -75,524 +86,6 @@ int client(int argc, char *argv[]);
 
 /* Test all */
 int test_all(const char *platform_file, const char *application_file);
-
-/* Types */
-typedef enum
-{
-    ERROR,
-    IN_PROGRESS,
-    VALID
-} workunit_status; // Workunit status
-typedef enum
-{
-    REQUEST,
-    REPLY,
-    TERMINATION,
-    NO
-} message_type; // Message type
-typedef enum
-{
-    FAIL,
-    SUCCESS
-} result_status; // Result status
-typedef enum
-{
-    CORRECT,
-    INCORRECT
-} result_value; // Result value
-// todo: smart ptrs against leaks
-typedef struct ssmessage s_ssmessage_t, *ssmessage_t;             // Message to scheduling server
-typedef struct request s_request_t, *request_t;                   // Client request to scheduling server
-typedef struct reply s_reply_t, *reply_t;                         // Client reply to scheduling server
-typedef struct result s_result_t, *result_t;                      // Result
-typedef struct dsmessage s_dsmessage_t, *dsmessage_t;             // Message to data server
-typedef struct dcsrequest s_dcsrequest_t, *dcsrequest_t;          // Data client request to data client server
-typedef struct dcsreply s_dcsreply_t, *dcsreply_t;                // Message to data server
-typedef struct dcsmessage s_dcsmessage_t, *dcsmessage_t;          // Message to data client server
-typedef struct dcmessage s_dcmessage_t, *dcmessage_t;             // Message to data server
-typedef struct dcworkunit s_dcworkunit_t, *dcworkunit_t;          // Data client workunit
-typedef struct workunit s_workunit_t, *workunit_t;                // Workunit
-typedef struct task s_task_t, *task_t;                            // Task
-typedef struct project s_project_t, *project_t;                   // Project
-typedef struct client s_client_t, *client_t;                      // Client
-typedef struct project_database s_pdatabase_t, *pdatabase_t;      // Project database
-typedef struct scheduling_server s_sserver_t, *sserver_t;         // Scheduling server
-typedef struct data_server s_dserver_t, *dserver_t;               // Data server
-typedef struct data_client_server s_dcserver_t, *dcserver_t;      // Data client server
-typedef struct data_client s_dclient_t, *dclient_t;               // Data client
-typedef struct client_group s_group_t, *group_t;                  // Client group
-typedef struct ask_for_files s_ask_for_files_t, *ask_for_files_t; // Ask for files params
-
-typedef enum
-{
-    SReplyT,
-    SRequestT
-} ssmessage_content;
-
-/* Message to scheduling server */
-struct ssmessage
-{
-    message_type type; // REQUEST, REPLY, TERMINATION
-    void *content;     // Content (request or reply)
-    ssmessage_content datatype;
-};
-
-/* Client request to scheduling server */
-struct request
-{
-    std::string answer_mailbox; // Answer mailbox
-    int32_t group_power;        // Client group power
-    int64_t power;              // Client power
-    double percentage;          // Percentage of project
-};
-
-/* Client reply to scheduling server */
-struct reply
-{
-    result_status status;  // Result status
-    result_value value;    // Result value
-    std::string workunit;  // Workunit
-    int32_t result_number; // Result number
-    int32_t credits;       // Credits requested
-};
-
-/* Result (workunit instance) */
-struct result
-{
-    workunit_t workunit;                  // Associated workunit
-    int32_t ninput_files;                 // Number of input files
-    std::vector<std::string> input_files; // Input files names (URLs)
-    int32_t number_tasks;                 // Number of tasks (usually one)
-    std::vector<task_t> tasks;            // Tasks
-};
-
-/* Message to data server */
-struct dsmessage
-{
-    message_type type;          // REQUEST, REPLY, TERMINATION
-    char proj_number;           // Project number
-    std::string answer_mailbox; // Answer mailbox
-};
-
-/* Data client request to data client server */
-struct dcsrequest
-{
-    std::string answer_mailbox; // Answer mailbox
-};
-
-/* Confirmation message to data client server */
-struct dcsreply
-{
-    std::string dclient_name;                    // Data client name
-    std::map<std::string, workunit_t> workunits; // Workunits
-};
-
-typedef enum
-{
-    SDcsrequestT,
-    SDcsreplyT
-} dcsmessage_content;
-
-/* Message to data client server */
-struct dcsmessage
-{
-    message_type type; // REQUEST, REPLY, TERMINATION
-    void *content;     // Content (dcs_request, dcs_reply)
-    dcsmessage_content datatype;
-};
-
-/* Reply to data client */
-struct dcmessage
-{
-    std::string answer_mailbox;                  // Answer mailbox
-    int32_t nworkunits;                          // Number of workunits
-    std::map<std::string, workunit_t> workunits; // Workunits
-};
-
-/* Workunit */
-struct workunit
-{
-    std::string number;                                 // Workunit number
-    workunit_status status;                             // ERROR, IN_PROGRESS, VALID
-    char ndata_clients;                                 // Number of times this workunit has been sent to data clients
-    char ndata_clients_confirmed;                       // Number of times this workunit has been confirmed from data clients
-    char ntotal_results;                                // Number of created results
-    char nsent_results;                                 // Number of sent results
-    char nresults_received;                             // Number of received results
-    char nvalid_results;                                // Number of valid results
-    char nsuccess_results;                              // Number of success results
-    char nerror_results;                                // Number of erroneous results
-    char ncurrent_error_results;                        // Number of current error results
-    int32_t credits;                                    // Number of credits per valid result
-    std::vector<double> times;                          // Time when each result was sent
-    int32_t ninput_files;                               // Number of input files
-    std::vector<std::string> input_files;               // Input files names (URLs)
-    std::atomic_int number_past_through_assimilator{0}; // all schedule service, validator and assimilator use workunit,
-                                                        // but a condition when we can delete it doesn't consider this -
-                                                        // only that data services don't need it anymore
-};
-
-/* Task */
-struct task
-{
-    std::string workunit; // Workunit of the task
-    std::string name;     // Task name
-    char scheduled;       // Task scheduled (it is in tasks_ready list) [0,1]
-    char running;         // Task is actually running on cpu [0,1]
-    intrusive::list_member_hook<> tasks_hookup;
-    intrusive::list_member_hook<> run_list_hookup;
-    intrusive::list_member_hook<> sim_tasks_hookup;
-    sg4::ExecPtr msg_task;
-    project_t project;  // Project reference
-    int64_t heap_index; // (maximum 2⁶³-1)
-    int64_t deadline;   // Task deadline (maximum 2⁶³-1)
-    double duration;    // Task duration in flops
-    double start;
-    double sim_finish; // Simulated finish time of task
-    double sim_remains;
-    // double comp_cost; // Task flops to execute. Can be less than duration if it was halt.
-};
-
-using TaskSwagT = intrusive::list<task, intrusive::member_hook<task, intrusive::list_member_hook<>,
-                                                               &task::tasks_hookup>>;
-using SimTaskSwagT = intrusive::list<task, intrusive::member_hook<task, intrusive::list_member_hook<>,
-                                                                  &task::sim_tasks_hookup>>;
-using RunListSwagT = intrusive::list<task, intrusive::member_hook<task, intrusive::list_member_hook<>,
-                                                                  &task::run_list_hookup>>;
-
-/* Client project */
-struct project
-{
-
-    /* General data of project */
-
-    std::string name;           // Project name
-    std::string answer_mailbox; // Client answer mailbox
-    char priority;              // Priority (maximum 255)
-    char number;                // Project number (maximum 255)
-    char on;                    // Project is working
-
-    /* Data to control tasks and their execution */
-
-    task_t running_task;    // which is the task that is running on thread */
-    sg4::ActorPtr thread;   // thread running the tasks of this project */
-    client_t client;        // Client pointer
-    TaskSwagT tasks_swag;   // nearly runnable jobs of project, insert at tail to keep ordered
-    SimTaskSwagT sim_tasks; // nearly runnable jobs of project, insert at tail to keep ordered
-    RunListSwagT run_list;  // list of jobs running, normally only one tasks, but if a deadline may occur it can put another here
-    sg4::MutexPtr tasks_ready_mutex;
-    sg4::ConditionVariablePtr tasks_ready_cv_is_empty;
-    std::queue<task_t> tasks_ready;        // synchro queue, thread to execute task */
-    TSQueue<int32_t> number_executed_task; // Queue with executed task numbers
-
-    TSQueue<std::string> workunit_executed_task; // Cola size tareas ejecutadas
-
-    /* Statistics data */
-
-    int32_t total_tasks_checked;  // (maximum 2³¹-1)
-    int32_t total_tasks_executed; // (maximum 2³¹-1)
-    int32_t total_tasks_received; // (maximum 2³¹-1)
-    int32_t total_tasks_missed;   // (maximum 2³¹-1)
-
-    /* Data to simulate boinc scheduling behavior */
-
-    double anticipated_debt;
-    double short_debt;
-    double long_debt;
-    double wall_cpu_time; // cpu time used by project during most recent period (SchedulingInterval or action finish)
-    double shortfall;
-};
-
-struct TaskCmp
-{
-    bool operator()(const task_t a, const task_t b) const
-    {
-        return a->start + a->deadline > b->start + b->deadline;
-    }
-};
-
-/* Client */
-struct client
-{
-    std::string name;
-    std::map<std::string, project_t> projects; // all projects of client
-    // todo: here I need operator < to be correct
-    std::set<task_t, TaskCmp> deadline_missed;
-    project_t running_project;
-    sg4::ActorPtr work_fetch_thread;
-    sg4::ConditionVariablePtr sched_cond;
-    sg4::MutexPtr sched_mutex;
-    sg4::ConditionVariablePtr work_fetch_cond;
-    sg4::MutexPtr work_fetch_mutex;
-    sg4::MutexPtr mutex_init;
-    sg4::ConditionVariablePtr cond_init;
-    sg4::MutexPtr ask_for_work_mutex;
-    sg4::ConditionVariablePtr ask_for_work_cond;
-    char n_projects;      // Number of projects attached
-    char finished;        // Number of finished threads (maximum 255)
-    char no_actions;      // No actions [0,1]
-    char on;              // Client will know who sent the signal
-    char initialized;     // Client initialized or not [0,1]
-    int32_t group_number; // Group_number
-    int64_t power;        // Host power
-    double sum_priority;  // sum of projects' priority
-    double total_shortfall;
-    double last_wall; // last time where the wall_cpu_time was updated
-    double factor;    // host power factor
-    double suspended; // Client is suspended (>0) or not (=0)
-};
-
-/* Project database */
-struct project_database
-{
-
-    /* Project attributes */
-
-    char project_number;                          // Project number
-    char nscheduling_servers;                     // Number of scheduling servers
-    char ndata_servers;                           // Number of data servers
-    char ndata_client_servers;                    // Number of data client servers
-    std::vector<std::string> scheduling_servers;  // Scheduling servers names
-    std::vector<std::string> data_servers;        // Data servers names
-    std::vector<std::string> data_client_servers; // Data client servers names
-    std::vector<std::string> data_clients;        // Data clients names
-    std::string project_name;                     // Project name
-    int32_t nclients;                             // Number of clients
-    int32_t nordinary_clients;                    // Number of ordinary clients
-    int32_t ndata_clients;                        // Number of data clients
-    int32_t nfinished_oclients;                   // Number of finished ordinary clients
-    int32_t nfinished_dclients;                   // Number of finished data clients
-    int64_t disk_bw;                              // Disk bandwidth of data servers
-
-    /* Redundancy and scheduling attributes */
-
-    int32_t min_quorum;          // Minimum number of successful results required for the validator. If a scrict majority agree, they are considered correct
-    int32_t target_nresults;     // Number of results to create initially per workunit
-    int32_t max_error_results;   // If the number of client error results exeed this, the workunit is declared to have an error
-    int32_t max_total_results;   // If the number of results for this workunit exeeds this, the workunit is declared to be in error
-    int32_t max_success_results; // If the number of success results for this workunit exeeds this, and a consensus has not been reached, the workunit is declared to be in error
-    int64_t delay_bound;         // The time by which a result must be completed (deadline)
-
-    /* Results attributes */
-
-    char ifgl_percentage;      // Percentage of input files generated locally
-    char ifcd_percentage;      // Number of workunits that share the same input files
-    char averagewpif;          // Average workunits per input files
-    char success_percentage;   // Percentage of success results
-    char canonical_percentage; // Percentage of success results that make up a consensus
-    int64_t input_file_size;   // Size of the input files needed for a result associated with a workunit of this project
-    int64_t output_file_size;  // Size of the output files needed for a result associated with a workunit of this project
-    int64_t job_duration;      // Job length in FLOPS
-
-    /* Result statistics */
-
-    int64_t nmessages_received; // Number of messages received (requests+replies)
-    int64_t nwork_requests;     // Number of requests received
-    int64_t nresults;           // Number of created results
-    int64_t nresults_sent;      // Number of sent results
-    int64_t nvalid_results;     // Number of valid results
-    int64_t nresults_received;  // Number of results returned from the clients
-    int64_t nresults_analyzed;  // Number of analyzed results
-    int64_t nsuccess_results;   // Number of success results
-    int64_t nerror_results;     // Number of error results
-    int64_t ndelay_results;     // Number of results delayed
-
-    /* Workunit statistics */
-
-    int64_t total_credit;               // Total credit granted
-    int64_t nworkunits;                 // Number of workunits created
-    int64_t nvalid_workunits;           // Number of workunits validated
-    int64_t nerror_workunits;           // Number of erroneous workunits
-    int64_t ncurrent_deleted_workunits; // Number of current deleted workunits
-
-    /* Work generator */
-
-    int64_t ncurrent_results;                            // Number of results currently in the system
-    int64_t ncurrent_error_results;                      // Number of error results currently in the system
-    int64_t ncurrent_workunits;                          // Number of current workunits
-    std::map<std::string, workunit_t> current_workunits; // Current workunits
-    std::queue<result_t> current_results;                // Current results
-    std::queue<workunit_t> current_error_results;        // Current error results
-    sg4::MutexPtr w_mutex;                               // Workunits mutex
-    sg4::MutexPtr r_mutex;                               // Results mutex
-    sg4::MutexPtr er_mutex;                              // Error results mutex
-    sg4::ConditionVariablePtr wg_empty;                  // Work generator CV empty
-    sg4::ConditionVariablePtr wg_full;                   // Work generator CV full
-    int wg_dcs;                                          // Work generator (data client server)
-    int wg_end;                                          // Work generator end
-
-    /* Validator */
-
-    int64_t ncurrent_validations;            // Number of results currently in the system
-    std::queue<reply_t> current_validations; // Current results
-    sg4::MutexPtr v_mutex;                   // Results mutex
-    sg4::ConditionVariablePtr v_empty;       // Validator CV empty
-    int v_end;                               // Validator end
-
-    /* Assimilator */
-
-    int64_t ncurrent_assimilations;                // Number of workunits waiting for assimilation
-    std::queue<std::string> current_assimilations; // Current workunits waiting for asimilation
-    sg4::MutexPtr a_mutex;                         // Assimilator mutex
-    sg4::ConditionVariablePtr a_empty;             // Assimilator CV empty
-    int a_end;                                     // Assimilator end
-
-    /* Download logs */
-
-    sg4::MutexPtr rfiles_mutex;     // Input file requests mutex ordinary clients
-    sg4::MutexPtr dcrfiles_mutex;   // Input file requests mutex data clients
-    sg4::MutexPtr dsuploads_mutex;  // Output file uploads mutex to data servers
-    sg4::MutexPtr dcuploads_mutex;  // Output file uploads mutex to data clients
-    std::vector<int64_t> rfiles;    // Input file requests ordinary clients
-    std::vector<int64_t> dcrfiles;  // Input file requests data clients
-    int64_t dsuploads;              // Output file uploads to data servers
-    std::vector<int64_t> dcuploads; // Output file uploads to data clients
-
-    /* File deleter */
-    int64_t ncurrent_deletions;            // Number of workunits that should be deleted
-    TSQueue<workunit_t> current_deletions; // Workunits that should be deleted
-
-    /* Files */
-
-    int32_t output_file_storage; // Output file storage [0-> data servers, 1->data clients]
-    int32_t dsreplication;       // Files replication in data servers
-    int32_t dcreplication;       // Files replication in data clients
-
-    int64_t ninput_files; // Number of input files currently in the system
-    // std::qu e ue<std::string> input_files; // Current input files
-    // sg4::MutexPtr i_mutex;             // Input files mutex
-    // sg4::ConditionVariablePtr i_empty; // Input files CV empty
-    // sg4::ConditionVariablePtr i_full;  // Input files CV full
-
-    // int64_t noutput_files; // Number of output files currently in the system
-    // std::que ue<int64_t> output_files;  // Current output files
-    // sg4::MutexPtr o_mutex;             // Output file mutex
-    // sg4::ConditionVariablePtr o_empty; // Onput files CV empty
-    // sg4::ConditionVariablePtr o_full;  // Onput files CV full
-
-    /* Synchronization */
-
-    sg4::MutexPtr ssrmutex;            // Scheduling server request mutex
-    sg4::MutexPtr ssdmutex;            // Scheduling server dispatcher mutex
-    sg4::MutexPtr dcmutex;             // Data client mutex
-    sg4::BarrierPtr barrier;           // Wait until database is initialized
-    char nfinished_scheduling_servers; // Number of finished scheduling servers
-};
-
-/* Scheduling server */
-struct scheduling_server
-{
-    char project_number;                     // Project number
-    std::string server_name;                 // Server name
-    sg4::MutexPtr mutex;                     // Mutex
-    sg4::ConditionVariablePtr cond;          // VC
-    std::queue<ssmessage_t> client_requests; // Requests queue
-    int32_t EmptyQueue;                      // Queue end [0,1]
-    int64_t Nqueue;                          // Queue size
-    double time_busy;                        // Time the server is busy
-};
-
-/* Data server */
-struct data_server
-{
-    char project_number;                     // Project number
-    std::string server_name;                 // Server name
-    sg4::MutexPtr mutex;                     // Mutex
-    sg4::ConditionVariablePtr cond;          // VC
-    std::queue<dsmessage_t> client_requests; // Requests queue
-    int32_t EmptyQueue;                      // Queue end [0,1]
-    int64_t Nqueue;                          // Queue size
-    double time_busy;                        // Time the server is busy
-};
-
-/* Data client server */
-struct data_client_server
-{
-    int32_t group_number;                     // Group number
-    std::string server_name;                  // Host name
-    sg4::MutexPtr mutex;                      // Mutex
-    sg4::ConditionVariablePtr cond;           // VC
-    std::queue<dcsmessage_t> client_requests; // Requests queue
-    int32_t EmptyQueue;                       // Queue end [0,1]
-    int64_t Nqueue;                           // Queue size
-    double time_busy;                         // Time the server is busy
-};
-
-/* Data client */
-struct data_client
-{
-    std::atomic_char working = 0;            // Data client is working -> 1
-    char nprojects;                          // Number of attached projects
-    std::string server_name;                 // Server name
-    sg4::ActorPtr ask_for_files_thread;      // Ask for files thread
-    sg4::MutexPtr mutex;                     // Mutex
-    sg4::MutexPtr ask_for_files_mutex;       // Ask for files mutex
-    sg4::ConditionVariablePtr cond;          // CV
-    std::queue<dsmessage_t> client_requests; // Requests queue
-    int32_t total_storage;                   // Storage in MB
-    int32_t finish;                          // Storage amount consumed in MB
-    int32_t EmptyQueue;                      // Queue end [0,1]
-    int64_t disk_bw;                         // Disk bandwidth
-    int64_t Nqueue;                          // Queue size
-    double time_busy;                        // Time the server is busy
-    double navailable;                       // Time the server is available
-    double sum_priority;                     // Sum of project priorities
-};
-
-/* Client group */
-struct client_group
-{
-    char on;                        // 0 -> Empty, 1-> proj_args length
-    char sp_distri;                 // Speed distribution
-    char db_distri;                 // Disk speed distribution
-    char av_distri;                 // Availability distribution
-    char nv_distri;                 // Non-availability distribution
-    sg4::MutexPtr mutex;            // Mutex
-    sg4::ConditionVariablePtr cond; // Cond
-    char **proj_args;               // Arguments
-    int32_t group_power;            // Group power
-    int32_t n_clients;              // Number of clients of the group
-    int32_t n_ordinary_clients;     // Number of ordinary clients of the group
-    int32_t n_data_clients;         // Number of data clients of the group
-    int64_t total_power;            // Total power
-    double total_available;         // Total time clients available
-    double total_notavailable;      // Total time clients not available
-    double connection_interval;
-    double scheduling_interval;
-    double sa_param;  // Speed A parameter
-    double sb_param;  // Speed B parameter
-    double da_param;  // Disk speed A parameter
-    double db_param;  // Disk speed B parameter
-    double aa_param;  // Availability A parameter
-    double ab_param;  // Availability B parameter
-    double na_param;  // Non availability A parameter
-    double nb_param;  // Non availability B parameter
-    double max_power; // Maximum host power
-    double min_power; // Minimum host power
-};
-
-/* Data client ask for files */
-struct ask_for_files
-{
-    char project_number;    // Project number
-    char project_priority;  // Project priority
-    std::string mailbox;    // Process mailbox
-    group_t group_info;     // Group information
-    dclient_t dclient_info; // Data client information
-};
-
-/* Simulation time */
-const double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600; // Total simulation time in seconds
-const double maxst = (MAX_SIMULATED_TIME) * 3600;                // Simulation time in seconds
-const double maxwt = (WARM_UP_TIME) * 3600;                      // Warm up time in seconds
-
-/* Server info */
-pdatabase_t _pdatabase;    // Projects databases
-sserver_t _sserver_info;   // Scheduling servers information
-dserver_t _dserver_info;   // Data servers information
-dcserver_t _dcserver_info; // Data client servers information
-dclient_t _dclient_info;   // Data clients information
-group_t _group_info;       // Client groups information
 
 /* Synchronization */
 sg4::MutexPtr _oclient_mutex; // Ordinary client mutex
@@ -644,7 +137,7 @@ int memoryUsage()
 /*
  *	Free task
  */
-static void free_task(task_t task)
+static void free_task(TaskT *task)
 {
     if (task->project->running_task == task)
     {
@@ -667,7 +160,7 @@ static void free_task(task_t task)
     delete task;
 }
 
-static void free_project(project_t proj)
+static void free_project(ProjectInstanceOnClient *proj)
 {
 
     auto clean_queue = []<typename T>(T &q)
@@ -689,11 +182,11 @@ static void free_project(project_t proj)
  */
 void disk_access(int32_t server_number, int64_t size)
 {
-    pdatabase_t database = &_pdatabase[server_number]; // Server info
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[server_number]; // Server info
 
     // Calculate sleep time
 
-    double sleep = std::min((double)maxtt - sg4::Engine::get_clock() - PRECISION, (double)size / database->disk_bw);
+    double sleep = std::min((double)maxtt - sg4::Engine::get_clock() - PRECISION, (double)size / project.disk_bw);
     if (sleep < 0)
         sleep = 0;
 
@@ -746,14 +239,6 @@ static inline void loadBar(int x, int n, int r, int w)
 }
 
 /*
- *	 Server compute simulation. Wait till the end of a executing task
- */
-void compute_server(int flops)
-{
-    sg4::this_actor::execute(flops);
-}
-
-/*
  *	Print server results
  */
 void print_results(int, char **)
@@ -788,98 +273,108 @@ void print_results(int, char **)
     // Iterate servers information
     for (int i = 0; i < NUMBER_PROJECTS; i++)
     {
-        pdatabase_t database = &_pdatabase[i]; // Server info pointer
+        ProjectDatabaseValue &project = SharedDatabase::_pdatabase[i]; // Server info pointer
 
         // Print results
-        printf("\n ####################  %s  ####################\n", database->project_name.c_str());
+        printf("\n ####################  %s  ####################\n", project.project_name.c_str());
         printf("\n Simulation ends in %'g h (%'g sec)\n\n", sg4::Engine::get_clock() / 3600.0 - WARM_UP_TIME, sg4::Engine::get_clock() - maxwt);
 
         double ocload = 0, dcload = 0;
-        for (int j = 0; j < database->dsreplication + database->dcreplication; j++)
+        for (int j = 0; j < project.dsreplication + project.dcreplication; j++)
         {
-            printf("  OC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, database->rfiles[j]);
-            if (j >= database->dcreplication)
-                ocload += database->rfiles[j];
+            printf("  OC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, project.rfiles[j]);
+            if (j >= project.dcreplication)
+                ocload += project.rfiles[j];
         }
 
         printf("\n");
 
-        for (int j = 0; j < database->dsreplication + database->dcreplication; j++)
+        for (int j = 0; j < project.dsreplication + project.dcreplication; j++)
         {
-            printf("  DC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, database->dcrfiles[j]);
-            if (j >= database->dcreplication)
-                dcload += database->dcrfiles[j];
+            printf("  DC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, project.dcrfiles[j]);
+            if (j >= project.dcreplication)
+                dcload += project.dcrfiles[j];
         }
 
         // printf("OC: %f\n DC: %f\n", ocload, dcload);
 
         printf("\n");
-        for (int j = 0; j < (int64_t)database->nscheduling_servers; j++, l++)
-            printf("  Scheduling server %" PRId64 " Busy: %0.1f%%\n", j, _sserver_info[l].time_busy / maxst * 100);
-        for (int j = 0; j < (int64_t)database->ndata_servers; j++, k++)
-            printf("  Data server %" PRId64 " Busy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, _dserver_info[k].time_busy / maxst * 100, (ocload * database->input_file_size + database->dsuploads * database->output_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst), (dcload * database->input_file_size) / ((ocload + dcload) * database->input_file_size + database->dsuploads * database->output_file_size) * 100 * (_dserver_info[k].time_busy / maxst));
-        printf("\n  Number of clients: %'d\n", database->nclients);
-        printf("  Number of ordinary clients: %'d\n", database->nordinary_clients);
-        printf("  Number of data clients: %'d\n\n", database->ndata_clients);
+        for (int j = 0; j < (int64_t)project.nscheduling_servers; j++, l++)
+            printf("  Scheduling server %" PRId64 " Busy: %0.1f%%\n", j, SharedDatabase::_sserver_info[l].time_busy / maxst * 100);
+        for (int j = 0; j < (int64_t)project.ndata_servers; j++, k++)
+            printf("  Data server %" PRId64 " Busy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, SharedDatabase::_dserver_info[k].time_busy / maxst * 100, (ocload * project.input_file_size + project.dsuploads * project.output_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst), (dcload * project.input_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst));
+        printf("\n  Number of clients: %'d\n", project.nclients);
+        printf("  Number of ordinary clients: %'d\n", project.nordinary_clients);
+        printf("  Number of data clients: %'d\n\n", project.ndata_clients);
 
         double time_busy = 0;
         int64_t storage = 0;
         double tnavailable = 0;
-        for (int j = 0; j < (int64_t)database->ndata_clients; j++, m++)
+        for (int j = 0; j < (int64_t)project.ndata_clients; j++, m++)
         {
-            time_busy += (_dclient_info[m].time_busy);
-            storage += (int64_t)(_dclient_info[m]).total_storage;
-            tnavailable += _dclient_info[m].navailable;
+            time_busy += (SharedDatabase::_dclient_info[m].time_busy);
+            storage += (int64_t)(SharedDatabase::_dclient_info[m]).total_storage;
+            tnavailable += SharedDatabase::_dclient_info[m].navailable;
         }
 
         // printf("time busy : %f\n", time_busy);
-        time_busy = time_busy / database->ndata_clients / maxst * 100;
-        storage /= (double)database->ndata_clients;
+        time_busy = time_busy / project.ndata_clients / maxst * 100;
+        storage /= (double)project.ndata_clients;
 
         printf("\n  Data clients average load: %0.1f%%\n", time_busy);
         printf("  Data clients average storage: %'" PRId64 " MB\n", storage);
-        printf("  Data clients availability: %0.1f%%\n\n", (maxst - (tnavailable / database->ndata_clients)) / maxtt * 100);
+        printf("  Data clients availability: %0.1f%%\n\n", (maxst - (tnavailable / project.ndata_clients)) / maxtt * 100);
 
-        printf("\n  Messages received: \t\t%'" PRId64 " (work requests received + results received)\n", database->nmessages_received);
-        printf("  Work requests received: \t%'" PRId64 "\n", database->nwork_requests);
-        printf("  Results created: \t\t%'" PRId64 " (%0.1f%%)\n", database->nresults, (double)database->nresults / database->nwork_requests * 100);
-        printf("  Results sent: \t\t%'" PRId64 " (%0.1f%%)\n", database->nresults_sent, (double)database->nresults_sent / database->nresults * 100);
-        printf("  Results received: \t\t%'" PRId64 " (%0.1f%%)\n", database->nresults_received, (double)database->nresults_received / database->nresults * 100);
-        printf("  Results analyzed: \t\t%'" PRId64 " (%0.1f%%)\n", database->nresults_analyzed, (double)database->nresults_analyzed / database->nresults_received * 100);
-        printf("  Results success: \t\t%'" PRId64 " (%0.1f%%)\n", database->nsuccess_results, (double)database->nsuccess_results / database->nresults_analyzed * 100);
-        printf("  Results failed: \t\t%'" PRId64 " (%0.1f%%)\n", database->nerror_results, (double)database->nerror_results / database->nresults_analyzed * 100);
-        printf("  Results too late: \t\t%'" PRId64 " (%0.1f%%)\n", database->ndelay_results, (double)database->ndelay_results / database->nresults_analyzed * 100);
-        printf("  Results valid: \t\t%'" PRId64 " (%0.1f%%)\n", database->nvalid_results, (double)database->nvalid_results / database->nresults_analyzed * 100);
-        printf("  Workunits total: \t\t%'" PRId64 "\n", database->nworkunits);
-        printf("  Workunits completed: \t\t%'" PRId64 " (%0.1f%%)\n", database->nvalid_workunits + database->nerror_workunits, (double)(database->nvalid_workunits + database->nerror_workunits) / database->nworkunits * 100);
-        printf("  Workunits not completed: \t%'" PRId64 " (%0.1f%%)\n", (database->nworkunits - database->nvalid_workunits - database->nerror_workunits), (double)(database->nworkunits - database->nvalid_workunits - database->nerror_workunits) / database->nworkunits * 100);
-        printf("  Workunits valid: \t\t%'" PRId64 " (%0.1f%%)\n", database->nvalid_workunits, (double)database->nvalid_workunits / database->nworkunits * 100);
-        printf("  Workunits error: \t\t%'" PRId64 " (%0.1f%%)\n", database->nerror_workunits, (double)database->nerror_workunits / database->nworkunits * 100);
-        printf("  Throughput: \t\t\t%'0.1f mens/s\n", (double)database->nmessages_received / maxst);
-        printf("  Credit granted: \t\t%'" PRId64 " credits\n", (long int)database->total_credit);
-        printf("  FLOPS in split: \t\t %0.1f and %0.1f and %0.1f end\n\n", (double)database->nvalid_results, (double)database->job_duration, maxst);
+        printf("\n  Messages received: \t\t%'" PRId64 " (work requests received + results received)\n", project.nmessages_received);
+        printf("  Work requests received: \t%'" PRId64 "\n", project.nwork_requests);
+        printf("  Results created: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults, (double)project.nresults / project.nwork_requests * 100);
+        printf("  Results sent: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_sent, (double)project.nresults_sent / project.nresults * 100);
+        printf("  Results received: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_received, (double)project.nresults_received / project.nresults * 100);
+        printf("  Results analyzed: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_analyzed, (double)project.nresults_analyzed / project.nresults_received * 100);
+        printf("  Results success: \t\t%'" PRId64 " (%0.1f%%)\n", project.nsuccess_results, (double)project.nsuccess_results / project.nresults_analyzed * 100);
+        printf("  Results failed: \t\t%'" PRId64 " (%0.1f%%)\n", project.nerror_results, (double)project.nerror_results / project.nresults_analyzed * 100);
+        printf("  Results too late: \t\t%'" PRId64 " (%0.1f%%)\n", project.ndelay_results, (double)project.ndelay_results / project.nresults_analyzed * 100);
+        printf("  Results valid: \t\t%'" PRId64 " (%0.1f%%)\n", project.nvalid_results, (double)project.nvalid_results / project.nresults_analyzed * 100);
+        printf("  Workunits total: \t\t%'" PRId64 "\n", project.nworkunits);
+        printf("  Workunits completed: \t\t%'" PRId64 " (%0.1f%%)\n", project.nvalid_workunits + project.nerror_workunits, (double)(project.nvalid_workunits + project.nerror_workunits) / project.nworkunits * 100);
+        printf("  Workunits not completed: \t%'" PRId64 " (%0.1f%%)\n", (project.nworkunits - project.nvalid_workunits - project.nerror_workunits), (double)(project.nworkunits - project.nvalid_workunits - project.nerror_workunits) / project.nworkunits * 100);
+        printf("  Workunits valid: \t\t%'" PRId64 " (%0.1f%%)\n", project.nvalid_workunits, (double)project.nvalid_workunits / project.nworkunits * 100);
+        printf("  Workunits error: \t\t%'" PRId64 " (%0.1f%%)\n", project.nerror_workunits, (double)project.nerror_workunits / project.nworkunits * 100);
+        printf("  Throughput: \t\t\t%'0.1f mens/s\n", (double)project.nmessages_received / maxst);
+        printf("  Credit granted: \t\t%'" PRId64 " credits\n", (long int)project.total_credit);
+        printf("  FLOPS in split: \t\t %0.1f and %0.1f and %0.1f end\n\n", (double)project.nvalid_results, (double)project.job_duration, maxst);
 
-        printf("  FLOPS average: \t\t%'" PRId64 " GFLOPS\n\n", (int64_t)((double)database->nvalid_results * (double)database->job_duration / maxst / 1000000000.0));
+        printf("  FLOPS average: \t\t%'" PRId64 " GFLOPS\n\n", (int64_t)((double)project.nvalid_results * (double)project.job_duration / maxst / 1000000000.0));
     }
 
     fflush(stdout);
 }
 
 /*
- * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
+ *	Generate result
  */
-void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)
+AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workunit, int X)
 {
-    do
-    {
-        ssize_t ready_comm_ind = sg4::Comm::test_any(pending_comms);
-        if (ready_comm_ind == -1)
-        {
-            break;
-        }
-        swap(pending_comms.back(), pending_comms[ready_comm_ind]);
-        pending_comms.pop_back();
-    } while (!pending_comms.empty());
+
+    AssignedResult *result = new AssignedResult();
+    result->workunit = workunit;
+    result->ninput_files = workunit->ninput_files;
+    result->input_files = workunit->input_files;
+    project.ncurrent_results++;
+    project.nresults++;
+
+    // workunit->times[(int)workunit->ntotal_results++] = sg4::Engine::get_clock();
+    workunit->times.push_back(sg4::Engine::get_clock());
+    workunit->ntotal_results++;
+
+    if (X == 1)
+        workunit->ncurrent_error_results--;
+
+    // todo: у нас кто-нибудь ждет на wh_empty?...
+    if (project.ncurrent_results >= 1)
+        project.wg_empty->notify_all();
+
+    return result;
 }
 
 /*
@@ -888,7 +383,6 @@ void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)
 int init_database(int argc, char *argv[])
 {
     int i, project_number;
-    pdatabase_t database;
 
     if (argc != 22)
     {
@@ -897,66 +391,66 @@ int init_database(int argc, char *argv[])
     }
 
     project_number = atoi(argv[1]);
-    database = &_pdatabase[project_number];
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number];
 
     // Init database
-    database->project_number = project_number;               // Project number
-    database->project_name = std::string(argv[2]);           // Project name
-    database->output_file_size = (int64_t)atoll(argv[3]);    // Answer size
-    database->job_duration = (int64_t)atoll(argv[4]);        // Workunit duration
-    database->ifgl_percentage = (char)atoi(argv[5]);         // Percentage of input files generated locally
-    database->ifcd_percentage = (char)atoi(argv[6]);         // Number of workunits that share the same input files
-    database->averagewpif = (char)atoi(argv[7]);             // Average workunits per input files
-    database->min_quorum = (int32_t)atoi(argv[8]);           // Quorum
-    database->target_nresults = (int32_t)atoi(argv[9]);      // target_nresults
-    database->max_error_results = (int32_t)atoi(argv[10]);   // max_error_results
-    database->max_total_results = (int32_t)atoi(argv[11]);   // Maximum number of times a task must be sent
-    database->max_success_results = (int32_t)atoi(argv[12]); // max_success_results
-    database->delay_bound = (int64_t)atoll(argv[13]);        // Workunit deadline
-    database->success_percentage = (char)atoi(argv[14]);     // Success results percentage
-    database->canonical_percentage = (char)atoi(argv[15]);   // Canonical results percentage
-    database->input_file_size = (int64_t)atoll(argv[16]);    // Input file size
-    database->disk_bw = (int64_t)atoll(argv[17]);            // Disk bandwidth
-    database->ndata_servers = (char)atoi(argv[18]);          // Number of data servers
-    database->output_file_storage = (int32_t)atoi(argv[19]); // Output file storage [0 -> data servers, 1 -> data clients]
-    database->dsreplication = (int32_t)atoi(argv[20]);       // File replication in data servers
-    database->dcreplication = (int32_t)atoi(argv[21]);       // File replication in data clients
-    database->nmessages_received = 0;                        // Store number of messages rec.
-    database->nresults = 0;                                  // Number of results created
-    database->nresults_sent = 0;                             // Number of results sent
-    database->nwork_requests = 0;                            // Store number of requests rec.
-    database->nvalid_results = 0;                            // Number of valid results (with a consensus)
-    database->nresults_received = 0;                         // Number of results received (replies)
-    database->nresults_analyzed = 0;                         // Number of results analyzed
-    database->nsuccess_results = 0;                          // Number of success results
-    database->nerror_results = 0;                            // Number of erroneous results
-    database->ndelay_results = 0;                            // Number of delayed results
-    database->total_credit = 0;                              // Total credit granted
-    database->nworkunits = 0;                                // Number of workunits created
-    database->nvalid_workunits = 0;                          // Number of valid workunits
-    database->nerror_workunits = 0;                          // Number of erroneous workunits
-    database->ncurrent_deleted_workunits = 0;                // Number of current deleted workunits
-    database->nfinished_scheduling_servers = 0;              // Number of finished scheduling servers
+    project.project_number = project_number;               // Project number
+    project.project_name = std::string(argv[2]);           // Project name
+    project.output_file_size = (int64_t)atoll(argv[3]);    // Answer size
+    project.job_duration = (int64_t)atoll(argv[4]);        // Workunit duration
+    project.ifgl_percentage = (char)atoi(argv[5]);         // Percentage of input files generated locally
+    project.ifcd_percentage = (char)atoi(argv[6]);         // Number of workunits that share the same input files
+    project.averagewpif = (char)atoi(argv[7]);             // Average workunits per input files
+    project.min_quorum = (int32_t)atoi(argv[8]);           // Quorum
+    project.target_nresults = (int32_t)atoi(argv[9]);      // target_nresults
+    project.max_error_results = (int32_t)atoi(argv[10]);   // max_error_results
+    project.max_total_results = (int32_t)atoi(argv[11]);   // Maximum number of times a task must be sent
+    project.max_success_results = (int32_t)atoi(argv[12]); // max_success_results
+    project.delay_bound = (int64_t)atoll(argv[13]);        // Workunit deadline
+    project.success_percentage = (char)atoi(argv[14]);     // Success results percentage
+    project.canonical_percentage = (char)atoi(argv[15]);   // Canonical results percentage
+    project.input_file_size = (int64_t)atoll(argv[16]);    // Input file size
+    project.disk_bw = (int64_t)atoll(argv[17]);            // Disk bandwidth
+    project.ndata_servers = (char)atoi(argv[18]);          // Number of data servers
+    project.output_file_storage = (int32_t)atoi(argv[19]); // Output file storage [0 -> data servers, 1 -> data clients]
+    project.dsreplication = (int32_t)atoi(argv[20]);       // File replication in data servers
+    project.dcreplication = (int32_t)atoi(argv[21]);       // File replication in data clients
+    project.nmessages_received = 0;                        // Store number of messages rec.
+    project.nresults = 0;                                  // Number of results created
+    project.nresults_sent = 0;                             // Number of results sent
+    project.nwork_requests = 0;                            // Store number of requests rec.
+    project.nvalid_results = 0;                            // Number of valid results (with a consensus)
+    project.nresults_received = 0;                         // Number of results received (replies)
+    project.nresults_analyzed = 0;                         // Number of results analyzed
+    project.nsuccess_results = 0;                          // Number of success results
+    project.nerror_results = 0;                            // Number of erroneous results
+    project.ndelay_results = 0;                            // Number of delayed results
+    project.total_credit = 0;                              // Total credit granted
+    project.nworkunits = 0;                                // Number of workunits created
+    project.nvalid_workunits = 0;                          // Number of valid workunits
+    project.nerror_workunits = 0;                          // Number of erroneous workunits
+    project.ncurrent_deleted_workunits = 0;                // Number of current deleted workunits
+    project.nfinished_scheduling_servers = 0;              // Number of finished scheduling servers
 
     // File input file requests
-    database->dsuploads = 0;
-    database->rfiles.resize(database->dsreplication + database->dcreplication);
-    database->dcrfiles.resize(database->dsreplication + database->dcreplication);
-    for (i = 0; i < database->dsreplication + database->dcreplication; i++)
+    project.dsuploads = 0;
+    project.rfiles.resize(project.dsreplication + project.dcreplication);
+    project.dcrfiles.resize(project.dsreplication + project.dcreplication);
+    for (i = 0; i < project.dsreplication + project.dcreplication; i++)
     {
-        database->rfiles[i] = 0;
-        database->dcrfiles[i] = 0;
+        project.rfiles[i] = 0;
+        project.dcrfiles[i] = 0;
     }
 
     // Fill with data server names
-    database->data_servers.reserve(database->ndata_servers);
-    for (i = 0; i < database->ndata_servers; i++)
+    project.data_servers.reserve(project.ndata_servers);
+    for (i = 0; i < project.ndata_servers; i++)
     {
         auto Mal = bprintf("d%" PRId32 "%" PRId32, project_number + 1, i);
-        database->data_servers.push_back(Mal);
+        project.data_servers.push_back(Mal);
     }
 
-    database->barrier->wait();
+    project.barrier->wait();
 
     return 0;
 }
@@ -964,10 +458,10 @@ int init_database(int argc, char *argv[])
 /*
  *	Generate workunit
  */
-workunit_t generate_workunit(pdatabase_t database)
+WorkunitT *generate_workunit(ProjectDatabaseValue &project)
 {
-    workunit_t workunit = new s_workunit_t();
-    workunit->number = std::string(bprintf("%" PRId64, database->nworkunits));
+    WorkunitT *workunit = new WorkunitT();
+    workunit->number = std::string(bprintf("%" PRId64, project.nworkunits));
     workunit->status = IN_PROGRESS;
     workunit->ndata_clients = 0;
     workunit->ndata_clients_confirmed = 0;
@@ -979,61 +473,20 @@ workunit_t generate_workunit(pdatabase_t database)
     workunit->nerror_results = 0;
     workunit->ncurrent_error_results = 0;
     workunit->credits = -1;
-    workunit->times.reserve(database->max_total_results);
-    workunit->ninput_files = database->dcreplication + database->dsreplication;
+    workunit->times.reserve(project.max_total_results);
+    workunit->ninput_files = project.dcreplication + project.dsreplication;
     workunit->input_files.resize(workunit->ninput_files);
-    database->ncurrent_workunits++;
+    project.ncurrent_workunits++;
 
     int i;
-    for (i = 0; i < database->dcreplication; i++)
+    for (i = 0; i < project.dcreplication; i++)
         workunit->input_files[i] = "";
     for (; i < workunit->ninput_files; i++)
-        workunit->input_files[i] = database->data_servers[uniform_int(0, database->ndata_servers - 1)];
+        workunit->input_files[i] = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
 
-    database->nworkunits++;
+    project.nworkunits++;
 
     return workunit;
-}
-
-/*
- *	Generate result
- */
-result_t generate_result(pdatabase_t database, workunit_t workunit, int X)
-{
-
-    result_t result = new s_result_t();
-    result->workunit = workunit;
-    result->ninput_files = workunit->ninput_files;
-    result->input_files = workunit->input_files;
-    database->ncurrent_results++;
-    database->nresults++;
-
-    // workunit->times[(int)workunit->ntotal_results++] = sg4::Engine::get_clock();
-    workunit->times.push_back(sg4::Engine::get_clock());
-    workunit->ntotal_results++;
-
-    if (X == 1)
-        workunit->ncurrent_error_results--;
-
-    // todo: у нас кто-нибудь ждет на wh_empty?...
-    if (database->ncurrent_results >= 1)
-        database->wg_empty->notify_all();
-
-    return result;
-}
-
-/*
- *	Blank result
- */
-result_t blank_result()
-{
-    result_t result = new s_result_t();
-    result->workunit = NULL;  // Associated workunit
-    result->ninput_files = 0; // Number of input files
-    // result->input_files.clear(); // Input files names (URLs)
-    result->number_tasks = 0; // Number of tasks (usually one)
-    // result->tasks;            // Tasks
-    return result;
 }
 
 /*
@@ -1049,22 +502,22 @@ int work_generator(int argc, char *argv[])
     }
 
     int project_number = atoi(argv[1]);
-    pdatabase_t database = &_pdatabase[project_number];
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number];
 
     // Wait until the database is initiated
 
-    database->barrier->wait();
+    project.barrier->wait();
 
-    while (!database->wg_end)
+    while (!project.wg_end)
     {
 
         // this is strange - double lock. probably meant w_mutex
-        std::unique_lock lock(*(database->w_mutex));
+        std::unique_lock lock(*(project.w_mutex));
 
-        while (database->ncurrent_workunits >= MAX_BUFFER && !database->wg_end && !database->wg_dcs)
-            database->wg_full->wait(lock);
+        while (project.ncurrent_workunits >= MAX_BUFFER && !project.wg_end && !project.wg_dcs)
+            project.wg_full->wait(lock);
 
-        if (database->wg_end)
+        if (project.wg_end)
         {
             lock.unlock();
             break;
@@ -1074,11 +527,10 @@ int work_generator(int argc, char *argv[])
         // double t0, t1;
         // t0 = sg4::Engine::get_clock();
 
-        database->wg_dcs = 0;
-        workunit_t workunit = NULL;
+        project.wg_dcs = 0;
 
         // Check if there are error results
-        database->er_mutex->lock();
+        project.er_mutex->lock();
 
         // // BORRAR
         // t1 = sg4::Engine::get_clock();
@@ -1086,35 +538,35 @@ int work_generator(int argc, char *argv[])
         //     printf("%f: WF1 -> %f s\n", sg4::Engine::get_clock(), t1 - t0);
 
         // Regenerate result when error result
-        if (database->ncurrent_error_results > 0)
+        if (project.ncurrent_error_results > 0)
         {
-            while (database->ncurrent_error_results > 0)
+            while (project.ncurrent_error_results > 0)
             {
                 // Get workunit associated with the error result
-                workunit = database->current_error_results.front();
-                database->current_error_results.pop();
-                database->ncurrent_error_results--;
-                database->er_mutex->unlock();
+                auto workunit = project.current_error_results.front();
+                project.current_error_results.pop();
+                project.ncurrent_error_results--;
+                project.er_mutex->unlock();
 
                 // Generate new instance from the workunit
-                database->r_mutex->lock();
-                result_t result = generate_result(database, workunit, 1);
-                database->current_results.push(result);
-                database->r_mutex->unlock();
+                project.r_mutex->lock();
+                auto result = generate_result(project, workunit, 1);
+                project.current_results.push(result);
+                project.r_mutex->unlock();
 
-                database->er_mutex->lock();
+                project.er_mutex->lock();
             }
         }
         // Create new workunit
         else
         {
             // Generate workunit
-            workunit_t workunit = generate_workunit(database);
-            database->current_workunits[workunit->number] = workunit;
+            WorkunitT *workunit = generate_workunit(project);
+            project.current_workunits[workunit->number] = workunit;
             // todo: don't I need to notify someone here...
         }
 
-        database->er_mutex->unlock();
+        project.er_mutex->unlock();
         lock.unlock();
 
         // // BORRAR
@@ -1131,7 +583,6 @@ int work_generator(int argc, char *argv[])
  */
 int validator(int argc, char *argv[])
 {
-    workunit_t workunit;
     reply_t reply = NULL;
 
     if (argc != 2)
@@ -1141,32 +592,32 @@ int validator(int argc, char *argv[])
     }
 
     int project_number = atoi(argv[1]);
-    pdatabase_t database = &_pdatabase[project_number];
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number];
 
     // Wait until the database is initiated
-    database->barrier->wait();
+    project.barrier->wait();
 
-    while (!database->v_end)
+    while (!project.v_end)
     {
 
-        std::unique_lock lock(*database->v_mutex);
+        std::unique_lock lock(*project.v_mutex);
 
-        while (database->ncurrent_validations == 0 && !database->v_end)
-            database->v_empty->wait(lock);
+        while (project.ncurrent_validations == 0 && !project.v_end)
+            project.v_empty->wait(lock);
 
-        if (database->v_end)
+        if (project.v_end)
         {
             break;
         }
 
         // Get received result
-        reply = database->current_validations.front();
-        database->current_validations.pop();
-        database->ncurrent_validations--;
+        reply = project.current_validations.front();
+        project.current_validations.pop();
+        project.ncurrent_validations--;
         lock.unlock();
 
         // Get asociated workunit
-        workunit = database->current_workunits.at(reply->workunit);
+        WorkunitT *workunit = project.current_workunits.at(reply->workunit);
         workunit->nresults_received++;
 
         // Delay result
@@ -1174,17 +625,17 @@ int validator(int argc, char *argv[])
         {
             std::cout << "UB: " << workunit->times.size() << ' ' << reply->result_number << std::endl;
         }
-        if (sg4::Engine::get_clock() - workunit->times[reply->result_number] >= database->delay_bound)
+        if (sg4::Engine::get_clock() - workunit->times[reply->result_number] >= project.delay_bound)
         {
             reply->status = FAIL;
             workunit->nerror_results++;
-            database->ndelay_results++;
+            project.ndelay_results++;
         }
         // Success result
         else if (reply->status == SUCCESS)
         {
             workunit->nsuccess_results++;
-            database->nsuccess_results++;
+            project.nsuccess_results++;
             if (reply->value == CORRECT)
             {
                 workunit->nvalid_results++;
@@ -1198,47 +649,47 @@ int validator(int argc, char *argv[])
         else
         {
             workunit->nerror_results++;
-            database->nerror_results++;
+            project.nerror_results++;
         }
-        database->nresults_analyzed++;
+        project.nresults_analyzed++;
 
         // Check workunit
-        database->er_mutex->lock();
+        project.er_mutex->lock();
         if (workunit->status == IN_PROGRESS)
         {
-            if (workunit->nvalid_results >= database->min_quorum)
+            if (workunit->nvalid_results >= project.min_quorum)
             {
-                database->w_mutex->lock();
+                project.w_mutex->lock();
                 workunit->status = VALID;
-                database->w_mutex->unlock();
-                database->nvalid_results += (int64_t)(workunit->nvalid_results);
-                database->total_credit += (int64_t)(workunit->credits * workunit->nvalid_results);
+                project.w_mutex->unlock();
+                project.nvalid_results += (int64_t)(workunit->nvalid_results);
+                project.total_credit += (int64_t)(workunit->credits * workunit->nvalid_results);
             }
-            else if (workunit->ntotal_results >= database->max_total_results ||
-                     workunit->nerror_results >= database->max_error_results ||
-                     workunit->nsuccess_results >= database->max_success_results)
+            else if (workunit->ntotal_results >= project.max_total_results ||
+                     workunit->nerror_results >= project.max_error_results ||
+                     workunit->nsuccess_results >= project.max_success_results)
             {
-                database->w_mutex->lock();
+                project.w_mutex->lock();
                 workunit->status = ERROR;
-                database->w_mutex->unlock();
+                project.w_mutex->unlock();
             }
         }
         else if (workunit->status == VALID && reply->status == SUCCESS && reply->value == CORRECT)
         {
-            database->nvalid_results++;
-            database->total_credit += (int64_t)(workunit->credits);
+            project.nvalid_results++;
+            project.total_credit += (int64_t)(workunit->credits);
         }
 
         // If result is an error and task is not completed, call work generator in order to create a new instance
         if (reply->status == FAIL)
         {
             if (workunit->status == IN_PROGRESS &&
-                workunit->nsuccess_results < database->max_success_results &&
-                workunit->nerror_results < database->max_error_results &&
-                workunit->ntotal_results < database->max_total_results)
+                workunit->nsuccess_results < project.max_success_results &&
+                workunit->nerror_results < project.max_error_results &&
+                workunit->ntotal_results < project.max_total_results)
             {
-                database->current_error_results.push(workunit);
-                database->ncurrent_error_results++;
+                project.current_error_results.push(workunit);
+                project.ncurrent_error_results++;
                 workunit->ncurrent_error_results++;
             }
         }
@@ -1248,13 +699,13 @@ int validator(int argc, char *argv[])
             (workunit->nresults_received == workunit->ntotal_results) &&
             (workunit->ncurrent_error_results == 0))
         {
-            database->a_mutex->lock();
-            database->current_assimilations.push(workunit->number);
-            database->ncurrent_assimilations++;
-            database->a_empty->notify_all();
-            database->a_mutex->unlock();
+            project.a_mutex->lock();
+            project.current_assimilations.push(workunit->number);
+            project.ncurrent_assimilations++;
+            project.a_empty->notify_all();
+            project.a_mutex->unlock();
         }
-        database->er_mutex->unlock();
+        project.er_mutex->unlock();
 
         delete reply;
         reply = NULL;
@@ -1266,53 +717,53 @@ int validator(int argc, char *argv[])
 /*
  *	File deleter
  */
-int file_deleter(pdatabase_t database, std::string workunit_number)
+int file_deleter(ProjectDatabaseValue &project, std::string workunit_number)
 {
     int64_t current_deletions;
 
     // Check if workunit can be deleted
 
-    auto can_delete_condition = [](workunit_t workunit)
+    auto can_delete_condition = [](WorkunitT *workunit)
     {
         return workunit->ndata_clients == workunit->ndata_clients_confirmed &&
                workunit->ndata_clients_confirmed == workunit->number_past_through_assimilator.load();
     };
 
-    workunit_t workunit = database->current_workunits.at(workunit_number);
+    WorkunitT *workunit = project.current_workunits.at(workunit_number);
     if (can_delete_condition(workunit))
     {
         // The workunit is ready to be deleted
-        database->current_workunits.erase(workunit_number);
-        database->dcmutex->lock();
-        database->ncurrent_deleted_workunits++;
-        database->dcmutex->unlock();
+        project.current_workunits.erase(workunit_number);
+        project.dcmutex->lock();
+        project.ncurrent_deleted_workunits++;
+        project.dcmutex->unlock();
     }
     else
     {
         // The workunit should not be deleted yet, so push it in the deletions queue
-        database->ncurrent_deletions++;
-        database->current_deletions.push(workunit);
+        project.ncurrent_deletions++;
+        project.current_deletions.push(workunit);
     }
 
     // Check deletions queue
     workunit = NULL;
-    current_deletions = database->ncurrent_deletions;
+    current_deletions = project.ncurrent_deletions;
     for (int64_t i = 0; i < current_deletions; i++)
     {
-        workunit = database->current_deletions.pop();
+        workunit = project.current_deletions.pop();
         if (can_delete_condition(workunit))
         {
             // The workunit is ready to be deleted
-            database->current_workunits.erase(workunit->number);
-            database->dcmutex->lock();
-            database->ncurrent_deleted_workunits++;
-            database->dcmutex->unlock();
-            database->ncurrent_deletions--;
+            project.current_workunits.erase(workunit->number);
+            project.dcmutex->lock();
+            project.ncurrent_deleted_workunits++;
+            project.dcmutex->unlock();
+            project.ncurrent_deletions--;
         }
         else
         {
             // The workunit should not be deleted yet, so push it again in the queue
-            database->current_deletions.push(workunit);
+            project.current_deletions.push(workunit);
         }
     }
 
@@ -1332,344 +783,43 @@ int assimilator(int argc, char *argv[])
     }
 
     int project_number = atoi(argv[1]);
-    pdatabase_t database = &_pdatabase[project_number];
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number];
 
     // Wait until the database is initiated
-    database->barrier->wait();
+    project.barrier->wait();
 
-    while (!database->a_end)
+    while (!project.a_end)
     {
 
-        std::unique_lock lock(*database->a_mutex);
+        std::unique_lock lock(*project.a_mutex);
 
-        while (database->ncurrent_assimilations == 0 && !database->a_end)
-            database->a_empty->wait(lock);
+        while (project.ncurrent_assimilations == 0 && !project.a_end)
+            project.a_empty->wait(lock);
 
-        if (database->a_end)
+        if (project.a_end)
         {
             break;
         }
 
         // Get workunit number to assimilate
-        std::string workunit_number = database->current_assimilations.front();
-        database->current_assimilations.pop();
-        database->ncurrent_assimilations--;
+        std::string workunit_number = project.current_assimilations.front();
+        project.current_assimilations.pop();
+        project.ncurrent_assimilations--;
         lock.unlock();
 
         // Get completed workunit
-        workunit_t workunit = database->current_workunits.at(workunit_number);
+        WorkunitT *workunit = project.current_workunits.at(workunit_number);
 
         // Update workunit stats
         if (workunit->status == VALID)
-            database->nvalid_workunits++;
+            project.nvalid_workunits++;
         else
-            database->nerror_workunits++;
+            project.nerror_workunits++;
 
         workunit->number_past_through_assimilator.fetch_add(1);
 
         // Delete completed workunit from database
-        file_deleter(database, workunit->number);
-    }
-
-    return 0;
-}
-
-/*
- *	Select result from database
- */
-result_t select_result(int project_number, request_t req)
-{
-
-    pdatabase_t database = &_pdatabase[project_number];
-
-    // Get result
-    result_t result = database->current_results.front();
-    database->current_results.pop();
-
-    // Signal work generator if number of current results is 0
-    database->ncurrent_results--;
-    if (database->ncurrent_results == 0)
-        database->wg_full->notify_all();
-
-    // Calculate number of tasks
-    result->number_tasks = (int32_t)floor(req->percentage / ((double)database->job_duration / req->power));
-    if (result->number_tasks == 0)
-        result->number_tasks = (int32_t)1;
-
-    // Create tasks
-    result->tasks.resize((int)result->number_tasks);
-
-    // Fill tasks
-    for (int i = 0; i < result->number_tasks; i++)
-    {
-        task_t task = new s_task_t();
-        task->workunit = result->workunit->number;
-        task->name = std::string(bprintf("%" PRId32, result->workunit->nsent_results++));
-        task->duration = database->job_duration * ((double)req->group_power / req->power);
-        task->deadline = database->delay_bound;
-        task->start = sg4::Engine::get_clock();
-        task->heap_index = -1;
-        result->tasks[i] = task;
-    }
-
-    database->ssdmutex->lock();
-    database->nresults_sent++;
-    database->ssdmutex->unlock();
-
-    return result;
-}
-
-/*
- *	Scheduling server requests function
- */
-int scheduling_server_requests(int argc, char *argv[])
-{
-    ssmessage_t msg = NULL;        // Client message
-    pdatabase_t database = NULL;   // Database
-    sserver_t sserver_info = NULL; // Scheduling server info
-
-    // Check number of arguments
-    if (argc != 3)
-    {
-        printf("Invalid number of parameter in scheduling_server_requests()\n");
-        return 0;
-    }
-
-    // Init boinc server
-    int32_t project_number = (int32_t)atoi(argv[1]);           // Project number
-    int32_t scheduling_server_number = (int32_t)atoi(argv[2]); // Scheduling server number
-
-    database = &_pdatabase[project_number];                  // Database
-    sserver_info = &_sserver_info[scheduling_server_number]; // Scheduling server info
-
-    sserver_info->server_name = sg4::this_actor::get_host()->get_name(); // Server name
-
-    // Wait until database is ready
-    database->barrier->wait();
-
-    /*
-        Set asynchronous mailbox mode in order to receive requests in spite of
-        the fact that the server is not calling MSG_task_receive()
-    */
-    // MSG_mailbox_set_async(sserver_info->server_name);
-
-    sg4::Mailbox *mailbox = sg4::Mailbox::by_name(sserver_info->server_name);
-    while (1)
-    {
-        // Receive message
-        msg = mailbox->get<ssmessage>();
-
-        // Termination message
-        if (msg->type == TERMINATION)
-        {
-            delete msg;
-            break;
-        }
-        // Client answer with execution results
-        else if (msg->type == REPLY)
-        {
-            database->ssrmutex->lock();
-            database->nmessages_received++;
-            database->nresults_received++;
-            database->ssrmutex->unlock();
-        }
-        // Client work request
-        else
-        {
-            database->ssrmutex->lock();
-            database->nmessages_received++;
-            database->nwork_requests++;
-            database->ssrmutex->unlock();
-        }
-
-        // Insert request into queue
-        sserver_info->mutex->lock();
-        sserver_info->Nqueue++;
-        sserver_info->client_requests.push(msg);
-
-        // If queue is not empty, wake up dispatcher process
-        if (sserver_info->Nqueue > 0)
-            sserver_info->cond->notify_all();
-        sserver_info->mutex->unlock();
-
-        // Free
-        msg = NULL;
-    }
-
-    // Terminate dispatcher execution
-    sserver_info->mutex->lock();
-    sserver_info->EmptyQueue = 1;
-    sserver_info->cond->notify_all();
-    sserver_info->mutex->unlock();
-
-    return 0;
-}
-
-/*
- *	Scheduling server dispatcher function
- */
-int scheduling_server_dispatcher(int argc, char *argv[])
-{
-    ssmessage_t msg = NULL;            // Client request
-    dsmessage_t work = NULL;           // Termination message
-    result_t result = NULL;            // Data server answer
-    simgrid::s4u::CommPtr comm = NULL; // Asynchronous communication
-    pdatabase_t database = NULL;       // Server info
-    sserver_t sserver_info = NULL;     // Scheduling server info
-    int32_t i, project_number;         // Index, project number
-    int32_t scheduling_server_number;  // Scheduling_server_number
-    double t0, t1;                     // Time measure
-
-    std::vector<sg4::CommPtr> _sscomm; // Asynchro communications storage (scheduling server with client)
-
-    // Check number of arguments
-    if (argc != 3)
-    {
-        printf("Invalid number of parameter in scheduling_server_dispatcher()\n");
-        return 0;
-    }
-
-    // Init boinc dispatcher
-    t0 = t1 = 0.0;
-    project_number = (int32_t)atoi(argv[1]);           // Project number
-    scheduling_server_number = (int32_t)atoi(argv[2]); // Scheduling server number
-
-    database = &_pdatabase[project_number];                  // Server info
-    sserver_info = &_sserver_info[scheduling_server_number]; // Scheduling server info
-
-    while (1)
-    {
-        std::unique_lock lock(*sserver_info->mutex);
-
-        // Wait until queue is not empty
-        while ((sserver_info->Nqueue == 0) && (sserver_info->EmptyQueue == 0))
-        {
-            sserver_info->cond->wait(lock);
-        }
-
-        // Exit the loop when boinc server indicates it
-        if ((sserver_info->EmptyQueue == 1) && sserver_info->Nqueue == 0)
-        {
-            break;
-        }
-
-        // Iteration start time
-        t0 = sg4::Engine::get_clock();
-
-        // Simulate server computation
-        compute_server(36000000);
-
-        // Pop client message
-        msg = sserver_info->client_requests.front();
-        sserver_info->client_requests.pop();
-        sserver_info->Nqueue--;
-        lock.unlock();
-
-        // Check if message is an answer with the computation results
-        if (msg->type == REPLY)
-        {
-            database->v_mutex->lock();
-
-            // Call validator
-            database->current_validations.push(reinterpret_cast<reply_t>(msg->content));
-            database->ncurrent_validations++;
-
-            database->v_empty->notify_all();
-            database->v_mutex->unlock();
-        }
-        // Message is an address request
-        else
-        {
-            // Consumer
-            database->r_mutex->lock();
-
-            if (database->ncurrent_results == 0)
-            {
-                // NO WORKUNITS
-                result = blank_result();
-            }
-            else
-            {
-                // CONSUME
-                result = select_result(project_number, (request_t)msg->content);
-            }
-
-            database->r_mutex->unlock();
-
-            // Create the task
-
-            // Answer the client
-            auto caller_reply_mailbox = ((request_t)msg->content)->answer_mailbox;
-            auto ans_mailbox = sg4::Mailbox::by_name(caller_reply_mailbox);
-
-            comm = ans_mailbox->put_async(result, KB * result->ninput_files);
-
-            // Store the asynchronous communication created in the dictionary
-
-            delete_completed_communications(_sscomm);
-            _sscomm.push_back(comm);
-
-            switch (msg->datatype)
-            {
-            case ssmessage_content::SReplyT:
-                delete (reply_t)msg->content;
-                break;
-            case ssmessage_content::SRequestT:
-                delete (request_t)msg->content;
-                break;
-            default:
-                break;
-            }
-
-            // // BORRAR
-            // t1 = sg4::Engine::get_clock();
-            // if (t1 - t0 > 1)
-            //     printf("%f: 3 -> %f s\n", sg4::Engine::get_clock(), t1 - t0);
-        }
-
-        // Iteration end time
-        t1 = sg4::Engine::get_clock();
-
-        // Accumulate total time server is busy
-        if (t0 < maxtt)
-            sserver_info->time_busy += (t1 - t0);
-
-        // Free
-        delete msg;
-        msg = NULL;
-        result = NULL;
-    }
-
-    // Wait until all scheduling servers finish
-    database->ssdmutex->lock();
-    database->nfinished_scheduling_servers++;
-    database->ssdmutex->unlock();
-
-    // Check if it is the last scheduling server
-    if (database->nfinished_scheduling_servers == database->nscheduling_servers)
-    {
-        // Send termination message to data servers
-        for (i = 0; i < database->ndata_servers; i++)
-        {
-            // Create termination message
-            work = new s_dsmessage_t();
-
-            // Group power = -1 indicates it is a termination message
-            work->type = TERMINATION;
-
-            // Send message
-            sg4::Mailbox::by_name(database->data_servers[i])->put(work, KB);
-        }
-        // Free
-        database->data_servers.clear();
-
-        // Finish project back-end
-        database->wg_end = 1;
-        database->v_end = 1;
-        database->a_end = 1;
-        database->wg_full->notify_all();
-        database->v_empty->notify_all();
-        database->a_empty->notify_all();
+        file_deleter(project, workunit->number);
     }
 
     return 0;
@@ -1693,7 +843,7 @@ int data_server_requests(int argc, char *argv[])
 
     // Init parameters
     server_number = (int32_t)atoi(argv[1]);                              // Data server number
-    dserver_info = &_dserver_info[server_number];                        // Data server info pointer
+    dserver_info = &SharedDatabase::_dserver_info[server_number];        // Data server info pointer
     dserver_info->server_name = sg4::this_actor::get_host()->get_name(); // Data server name
 
     // Set asynchronous receiving in mailbox
@@ -1740,7 +890,6 @@ int data_server_requests(int argc, char *argv[])
  */
 int data_server_dispatcher(int argc, char *argv[])
 {
-    pdatabase_t database = NULL;
     dserver_t dserver_info = NULL;
     dsmessage_t req = NULL;
     simgrid::s4u::CommPtr comm = NULL; // Asynch communication
@@ -1758,8 +907,8 @@ int data_server_dispatcher(int argc, char *argv[])
     server_number = (int32_t)atoi(argv[1]);
     project_number = (int32_t)atoi(argv[2]);
 
-    dserver_info = &_dserver_info[server_number]; // Data server info pointer
-    database = &_pdatabase[project_number];       // Boinc server info pointer
+    dserver_info = &SharedDatabase::_dserver_info[server_number];               // Data server info pointer
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number]; // Boinc server info pointer
 
     std::vector<sg4::CommPtr> _dscomm; // Asynchro communications storage (data server with client)
 
@@ -1794,19 +943,19 @@ int data_server_dispatcher(int argc, char *argv[])
         // Reply with output file
         if (req->type == REPLY)
         {
-            disk_access(project_number, database->output_file_size);
-            database->dsuploads_mutex->lock();
-            database->dsuploads++;
-            database->dsuploads_mutex->unlock();
+            disk_access(project_number, project.output_file_size);
+            project.dsuploads_mutex->lock();
+            project.dsuploads++;
+            project.dsuploads_mutex->unlock();
         }
         // Input file request
         else
         {
             // Read tasks from disk
-            disk_access(project_number, database->input_file_size);
+            disk_access(project_number, project.input_file_size);
 
             // Answer the client
-            comm = sg4::Mailbox::by_name(req->answer_mailbox)->put_async(new int(1), database->input_file_size);
+            comm = sg4::Mailbox::by_name(req->answer_mailbox)->put_async(new int(1), project.input_file_size);
 
             // Store the asynchronous communication created in the dictionary
 
@@ -1837,7 +986,6 @@ int data_server_dispatcher(int argc, char *argv[])
 int data_client_server_requests(int argc, char *argv[])
 {
     dcsmessage_t msg = NULL;                           // Data client message
-    pdatabase_t database = NULL;                       // Project database
     dcserver_t dcserver_info = NULL;                   // Data client server info
     int32_t data_client_server_number, project_number; // Data client server number, project number
 
@@ -1852,13 +1000,13 @@ int data_client_server_requests(int argc, char *argv[])
     project_number = (int32_t)atoi(argv[1]);            // Project number
     data_client_server_number = (int32_t)atoi(argv[2]); // Data client server number
 
-    database = &_pdatabase[project_number];                     // Database
-    dcserver_info = &_dcserver_info[data_client_server_number]; // Data client server info
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number]; // Database
+    dcserver_info = &SharedDatabase::_dcserver_info[data_client_server_number]; // Data client server info
 
     dcserver_info->server_name = sg4::this_actor::get_host()->get_name(); // Server name
 
     // Wait until database is ready
-    database->barrier->wait();
+    project.barrier->wait();
 
     // Set asynchronous receiving in mailbox
     // MSG_mailbox_set_async(dcserver_info->server_name);
@@ -1906,7 +1054,6 @@ int data_client_server_dispatcher(int argc, char *argv[])
 {
     dcsmessage_t msg = NULL;                           // Data client message
     dcmessage_t ans_msg = NULL;                        // Answer to data client
-    pdatabase_t database = NULL;                       // Project database
     dcserver_t dcserver_info = NULL;                   // Data client server info
     int32_t data_client_server_number, project_number; // Data client server number, project number
 
@@ -1921,8 +1068,8 @@ int data_client_server_dispatcher(int argc, char *argv[])
     project_number = (int32_t)atoi(argv[1]);            // Project number
     data_client_server_number = (int32_t)atoi(argv[2]); // Data client server number
 
-    database = &_pdatabase[project_number];                     // Database
-    dcserver_info = &_dcserver_info[data_client_server_number]; // Data client server info
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number]; // Database
+    dcserver_info = &SharedDatabase::_dcserver_info[data_client_server_number]; // Data client server info
 
     while (1)
     {
@@ -1960,14 +1107,14 @@ int data_client_server_dispatcher(int argc, char *argv[])
                 workunit->ndata_clients_confirmed++;
 
                 // Generate target_nresults instances when workunit is confirmed for the first time
-                if (workunit->ndata_clients_confirmed == database->dcreplication)
+                if (workunit->ndata_clients_confirmed == project.dcreplication)
                 {
-                    for (int i = 0; i < database->target_nresults; i++)
+                    for (int i = 0; i < project.target_nresults; i++)
                     {
-                        result_t result = generate_result(database, workunit, 0);
+                        auto result = generate_result(project, workunit, 0);
                         {
-                            std::unique_lock lock(*database->r_mutex);
-                            database->current_results.push(result);
+                            std::unique_lock lock(*project.r_mutex);
+                            project.current_results.push(result);
                         }
                     }
                 }
@@ -1982,13 +1129,13 @@ int data_client_server_dispatcher(int argc, char *argv[])
             ans_msg->nworkunits = 0;
             ans_msg->workunits.clear();
 
-            database->w_mutex->lock();
-            for (auto &[key, workunit] : database->current_workunits)
+            project.w_mutex->lock();
+            for (auto &[key, workunit] : project.current_workunits)
             {
-                if (ans_msg->nworkunits < database->averagewpif)
+                if (ans_msg->nworkunits < project.averagewpif)
                 {
                     if (workunit->status == IN_PROGRESS &&
-                        workunit->ndata_clients < database->dcreplication &&
+                        workunit->ndata_clients < project.dcreplication &&
                         (workunit->ndata_clients_confirmed > 0 ||
                          workunit->ndata_clients == 0))
                     {
@@ -2005,10 +1152,10 @@ int data_client_server_dispatcher(int argc, char *argv[])
 
             if (ans_msg->workunits.empty())
             {
-                database->wg_dcs = 1;
-                database->wg_full->notify_all();
+                project.wg_dcs = 1;
+                project.wg_full->notify_all();
             }
-            database->w_mutex->unlock();
+            project.w_mutex->unlock();
 
             sg4::Mailbox::by_name(((dcsrequest_t)msg->content)->answer_mailbox)->put(ans_msg, REPLY_SIZE);
         }
@@ -2062,10 +1209,8 @@ int data_client_ask_for_files(ask_for_files_t params)
     // Reply to data client server
     dcsmessage_t dcsreply = NULL;
 
-    pdatabase_t database = NULL; // Database
     // group_t group_info = NULL;			// Group information
     dclient_t dclient_info = NULL;         // Data client information
-    workunit_t workunit = NULL;            // Workunit
     double storage = 0, max_storage = 0;   // File storage in MB
     char project_number, project_priority; // Project number and priority
     int i;
@@ -2080,25 +1225,25 @@ int data_client_ask_for_files(ask_for_files_t params)
 
     max_storage = storage = (project_priority / dclient_info->sum_priority) * dclient_info->total_storage * KB * KB;
 
-    database = &_pdatabase[(int)project_number]; // Database
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)project_number]; // Database
 
     // Reduce input file storage if output files are uploaded to data clients
-    if (database->output_file_size == 1)
+    if (project.output_file_size == 1)
     {
         max_storage /= 2.0;
         storage = max_storage;
     }
 
-    database->dcmutex->lock();
-    for (i = 0; i < database->ndata_clients; i++)
+    project.dcmutex->lock();
+    for (i = 0; i < project.ndata_clients; i++)
     {
-        if (database->data_clients[i].empty())
+        if (project.data_clients[i].empty())
         {
-            database->data_clients[i] = dclient_info->server_name;
+            project.data_clients[i] = dclient_info->server_name;
             break;
         }
     }
-    database->dcmutex->unlock();
+    project.dcmutex->unlock();
 
     // printf("Storage: %f\n", max_storage);
 
@@ -2115,18 +1260,18 @@ int data_client_ask_for_files(ask_for_files_t params)
         // Delete local files when there are completed workunits
         while (storage < max_storage)
         {
-            database->dcmutex->lock();
-            if (database->ncurrent_deleted_workunits >= database->averagewpif)
+            project.dcmutex->lock();
+            if (project.ncurrent_deleted_workunits >= project.averagewpif)
             {
-                database->ncurrent_deleted_workunits -= database->averagewpif;
-                storage += database->input_file_size;
+                project.ncurrent_deleted_workunits -= project.averagewpif;
+                storage += project.input_file_size;
             }
             else
             {
-                database->dcmutex->unlock();
+                project.dcmutex->unlock();
                 break;
             }
-            database->dcmutex->unlock();
+            project.dcmutex->unlock();
         }
 
         if (storage >= 0)
@@ -2140,7 +1285,7 @@ int data_client_ask_for_files(ask_for_files_t params)
             dcsrequest->datatype = dcsmessage_content::SDcsrequestT;
             ((dcsrequest_t)dcsrequest->content)->answer_mailbox = mailbox->get_name();
 
-            auto where = database->data_client_servers[uniform_int(0, database->ndata_client_servers - 1)];
+            auto where = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1)];
 
             sg4::Mailbox::by_name(where)->put(dcsrequest, KB);
 
@@ -2155,10 +1300,10 @@ int data_client_ask_for_files(ask_for_files_t params)
                         continue;
 
                     // Download input files (or generate them locally)
-                    if (uniform_int(0, 99) < (int)database->ifgl_percentage)
+                    if (uniform_int(0, 99) < (int)project.ifgl_percentage)
                     {
                         // Download only if the workunit was not downloaded previously
-                        if (uniform_int(0, 99) < (int)database->ifcd_percentage)
+                        if (uniform_int(0, 99) < (int)project.ifcd_percentage)
                         {
                             for (i = 0; i < workunit->ninput_files; i++)
                             {
@@ -2168,12 +1313,12 @@ int data_client_ask_for_files(ask_for_files_t params)
                                 server_name = workunit->input_files[i];
 
                                 // BORRAR (esta mal, no generico)
-                                if (i < database->dcreplication)
+                                if (i < project.dcreplication)
                                 {
                                     int server_number = atoi(server_name.c_str() + 2) - NUMBER_ORDINARY_CLIENTS;
                                     // printf("resto: %d, server_name: %s, server_number: %d\n", NUMBER_ORDINARY_CLIENTS, server_name.c_str(), server_number);
-                                    // printf("%d\n", _dclient_info[server_number].working);
-                                    if (_dclient_info[server_number].working.load() == 0)
+                                    // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
+                                    if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
                                         continue;
                                 }
 
@@ -2200,11 +1345,11 @@ int data_client_ask_for_files(ask_for_files_t params)
                                 }*/
 
                                 // Log request
-                                database->rfiles_mutex->lock();
-                                database->dcrfiles[i]++;
-                                database->rfiles_mutex->unlock();
+                                project.rfiles_mutex->lock();
+                                project.dcrfiles[i]++;
+                                project.rfiles_mutex->unlock();
 
-                                storage -= database->input_file_size;
+                                storage -= project.input_file_size;
                                 delete dsinput_file_reply_task;
                                 dsinput_file_reply_task = NULL;
                                 break;
@@ -2242,15 +1387,15 @@ int data_client_ask_for_files(ask_for_files_t params)
 
     // Finish data client servers execution
     _dclient_mutex->lock();
-    database->nfinished_dclients++;
-    if (database->nfinished_dclients == database->ndata_clients)
+    project.nfinished_dclients++;
+    if (project.nfinished_dclients == project.ndata_clients)
     {
-        for (i = 0; i < database->ndata_client_servers; i++)
+        for (i = 0; i < project.ndata_client_servers; i++)
         {
             dcsrequest = new s_dcsmessage_t();
             dcsrequest->type = TERMINATION;
 
-            sg4::Mailbox::by_name(database->data_client_servers[i])->put(dcsrequest, REQUEST_SIZE);
+            sg4::Mailbox::by_name(project.data_client_servers[i])->put(dcsrequest, REQUEST_SIZE);
         }
     }
     _dclient_mutex->unlock();
@@ -2284,8 +1429,8 @@ int data_client_requests(int argc, char *argv[])
     group_number = (int32_t)atoi(argv[1]);       // Group number
     data_client_number = (int32_t)atoi(argv[2]); // Data client number
 
-    group_info = &_group_info[group_number];                             // Group info
-    dclient_info = &_dclient_info[data_client_number];                   // Data client info
+    group_info = &SharedDatabase::_group_info[group_number];             // Group info
+    dclient_info = &SharedDatabase::_dclient_info[data_client_number];   // Data client info
     dclient_info->server_name = sg4::this_actor::get_host()->get_name(); // Server name
     dclient_info->navailable = 0;
 
@@ -2398,7 +1543,6 @@ int data_client_requests(int argc, char *argv[])
  */
 int data_client_dispatcher(int argc, char *argv[])
 {
-    pdatabase_t database = NULL;       // Database
     simgrid::s4u::CommPtr comm = NULL; // Asynchronous comm
     dsmessage_t msg = NULL;            // Client message
     dclient_t dclient_info = NULL;     // Data client information
@@ -2415,7 +1559,7 @@ int data_client_dispatcher(int argc, char *argv[])
     // Init data client
     data_client_number = (int32_t)atoi(argv[2]); // Data client number
 
-    dclient_info = &_dclient_info[data_client_number]; // Data client info
+    dclient_info = &SharedDatabase::_dclient_info[data_client_number]; // Data client info
 
     std::vector<sg4::CommPtr> _dscomm;
 
@@ -2446,23 +1590,23 @@ int data_client_dispatcher(int argc, char *argv[])
         // Simulate server computation
         compute_server(20);
 
-        database = &_pdatabase[(int)msg->proj_number];
+        ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)msg->proj_number];
 
         // Reply with output file
         if (msg->type == REPLY)
         {
-            disk_access2(database->output_file_size);
+            disk_access2(project.output_file_size);
         }
         // Input file request
         else if (msg->type == REQUEST)
         {
             // Read tasks from disk
-            disk_access2(database->input_file_size);
+            disk_access2(project.input_file_size);
 
             // Create the message
 
             // Answer the client
-            comm = sg4::Mailbox::by_name(msg->answer_mailbox)->put_async(new int(2), database->input_file_size);
+            comm = sg4::Mailbox::by_name(msg->answer_mailbox)->put_async(new int(2), project.input_file_size);
 
             // Store the asynchronous communication created in the dictionary
             delete_completed_communications(_dscomm);
@@ -2494,7 +1638,7 @@ int data_client_dispatcher(int argc, char *argv[])
  */
 static void client_initialize_projects(client_t client, int argc, char **argv)
 {
-    std::map<std::string, project_t> dict;
+    std::map<std::string, ProjectInstanceOnClient *> dict;
     int number_proj;
     int i, index;
 
@@ -2509,9 +1653,7 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
     index = 1;
     for (i = 0; i < number_proj; i++)
     {
-        project_t proj;
-        s_task_t t;
-        proj = new s_project_t();
+        ProjectInstanceOnClient *proj = new ProjectInstanceOnClient();
         proj->name = std::string(argv[index++]);
         proj->number = (char)atoi(argv[index++]);
         proj->priority = (char)atoi(argv[index++]);
@@ -2545,7 +1687,7 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
  *	- Send execution results to scheduling_server
  *	- Upload output files to data server
  */
-static int client_ask_for_work(client_t client, project_t proj, double percentage)
+static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, double percentage)
 {
     /*
 
@@ -2577,35 +1719,26 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 
     */
 
-    pdatabase_t database = NULL; // Database
     // msg_error_t error;				// Sending result
     // double backoff = 300;				// 1 minute initial backoff
-
-    // Scheduling server work request
-    result_t sswork_reply_task = NULL; // Work reply task from scheduling server
-    ssmessage_t sswork_request = NULL; // Work request message
-    result_t sswork_reply = NULL;      // Work reply message
 
     // Data server input file request
     dsmessage_t dsinput_file_reply_task = NULL; // Input file reply task from data server
     dsmessage_t dsinput_file_request = NULL;    // Input file request message
-
-    // Scheduling server execution results reply
-    ssmessage_t ssexecution_results = NULL; // Execution results message
 
     // Data server output file reply
     dsmessage_t dsoutput_file = NULL; // Output file message
 
     std::string server_name; // Store data server name
 
-    database = &_pdatabase[(int)proj->number]; // Boinc server info pointer
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)proj->number]; // Boinc server info pointer
 
     // Check if there are executed results
     while (proj->total_tasks_executed > proj->total_tasks_checked)
     {
 
         // Create execution results message
-        ssexecution_results = new s_ssmessage_t();
+        auto ssexecution_results = new SchedulingServerMessage();
         ssexecution_results->type = REPLY;
         ssexecution_results->content = new s_reply_t();
         ssexecution_results->datatype = ssmessage_content::SReplyT;
@@ -2614,11 +1747,11 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
         proj->total_tasks_checked++;
 
         // Executed task status [SUCCES, FAIL]
-        if (uniform_int(0, 99) < database->success_percentage)
+        if (uniform_int(0, 99) < project.success_percentage)
         {
             ((reply_t)ssexecution_results->content)->status = SUCCESS;
             // Executed task value [CORRECT, INCORRECT]
-            if (uniform_int(0, 99) < database->canonical_percentage)
+            if (uniform_int(0, 99) < project.canonical_percentage)
                 ((reply_t)ssexecution_results->content)->value = CORRECT;
             else
                 ((reply_t)ssexecution_results->content)->value = INCORRECT;
@@ -2634,36 +1767,36 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
         ((reply_t)ssexecution_results->content)->workunit = proj->workunit_executed_task.pop();
 
         // Calculate credits
-        ((reply_t)ssexecution_results->content)->credits = (int32_t)((int64_t)database->job_duration / 1000000000.0 * CREDITS_CPU_S);
+        ((reply_t)ssexecution_results->content)->credits = (int32_t)((int64_t)project.job_duration / 1000000000.0 * CREDITS_CPU_S);
         // Create execution results task
 
         // Send message to the server
-        auto &server_nm_ml = database->scheduling_servers[uniform_int(0, database->nscheduling_servers - 1)];
+        auto &server_nm_ml = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
         auto where = sg4::Mailbox::by_name(server_nm_ml);
 
         where->put(ssexecution_results, REPLY_SIZE);
 
-        if (database->output_file_storage == 0)
+        if (project.output_file_storage == 0)
         {
             // Upload output files to data servers
-            for (int32_t i = 0; i < database->dsreplication; i++)
+            for (int32_t i = 0; i < project.dsreplication; i++)
             {
                 dsoutput_file = new s_dsmessage_t();
                 dsoutput_file->type = REPLY;
-                auto where = database->data_servers[uniform_int(0, database->ndata_servers - 1)];
+                auto where = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
 
-                sg4::Mailbox::by_name(where)->put(dsoutput_file, database->output_file_size);
+                sg4::Mailbox::by_name(where)->put(dsoutput_file, project.output_file_size);
             }
         }
         else
         {
             // Upload output files to data clients
 
-            for (int32_t i = 0; i < database->dcreplication; i++)
+            for (int32_t i = 0; i < project.dcreplication; i++)
             {
-                server_name = database->data_clients[uniform_int(0, database->ndata_clients - 1)];
+                server_name = project.data_clients[uniform_int(0, project.ndata_clients - 1)];
                 int server_number = atoi(server_name.c_str() + 2) - NUMBER_ORDINARY_CLIENTS;
-                if (!_dclient_info[server_number].working.load())
+                if (!SharedDatabase::_dclient_info[server_number].working.load())
                 {
                     i--;
                     continue;
@@ -2671,35 +1804,35 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 
                 dsoutput_file = new s_dsmessage_t();
                 dsoutput_file->type = REPLY;
-                sg4::Mailbox::by_name(server_name)->put(dsoutput_file, database->output_file_size);
+                sg4::Mailbox::by_name(server_name)->put(dsoutput_file, project.output_file_size);
             }
         }
     }
 
     // Request work
-    sswork_request = new s_ssmessage_t();
+    SchedulingServerMessage *sswork_request = new SchedulingServerMessage();
     sswork_request->type = REQUEST;
     sswork_request->content = new s_request_t();
     sswork_request->datatype = ssmessage_content::SRequestT;
     ((request_t)sswork_request->content)->answer_mailbox = proj->answer_mailbox;
-    ((request_t)sswork_request->content)->group_power = _group_info[client->group_number].group_power;
+    ((request_t)sswork_request->content)->group_power = SharedDatabase::_group_info[client->group_number].group_power;
     ((request_t)sswork_request->content)->power = client->power;
     ((request_t)sswork_request->content)->percentage = percentage;
 
-    auto &serve_nm_ml = database->scheduling_servers[uniform_int(0, database->nscheduling_servers - 1)];
+    auto &serve_nm_ml = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
 
     auto where = sg4::Mailbox::by_name(serve_nm_ml);
-
+    // std::cout << "send to scheduler " << __LINE__ << "with value of context " << sswork_request->content << std::endl;
     where->put(sswork_request, REQUEST_SIZE);
 
     // MSG_task_receive(, ); // Receive reply from scheduling server
-    sswork_reply = sg4::Mailbox::by_name(proj->answer_mailbox)->get<result>(); // Get work
+    AssignedResult *sswork_reply = sg4::Mailbox::by_name(proj->answer_mailbox)->get<AssignedResult>(); // Get work
 
     // Download input files (or generate them locally)
-    if (uniform_int(0, 99) < (int)database->ifgl_percentage)
+    if (uniform_int(0, 99) < (int)project.ifgl_percentage)
     {
         // Download only if the workunit was not downloaded previously
-        if (uniform_int(0, 99) < (int)database->ifcd_percentage)
+        if (uniform_int(0, 99) < (int)project.ifcd_percentage)
         {
             // printf("try to understand %d\n", sswork_reply->ninput_files);
 
@@ -2711,14 +1844,14 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
                 server_name = sswork_reply->input_files[i];
 
                 // BORRAR (esta mal)
-                if (i < database->dcreplication)
+                if (i < project.dcreplication)
                 {
                     int server_number = atoi(server_name.c_str() + 2) - NUMBER_ORDINARY_CLIENTS;
                     // printf("resto: %d, server_number: %d\n", NUMBER_ORDINARY_CLIENTS, server_number);
-                    // printf("%d\n", _dclient_info[server_number].working);
+                    // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
                     //  BORRAR
-                    // if(i==1) printf("%d\n", _dclient_info[server_number].working);
-                    if (_dclient_info[server_number].working.load() == 0)
+                    // if(i==1) printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
+                    if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
                         continue;
                 }
 
@@ -2732,20 +1865,10 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
                 // error = MSG_task_receive_with_timeout(&dsinput_file_reply_task, proj->answer_mailbox, backoff);		// Send input file reply
                 dsinput_file_reply_task = sg4::Mailbox::by_name(proj->answer_mailbox)->get<s_dsmessage_t>();
 
-                // printf("%d Tiempo: %f\n", server_number, t1-t0);
-
-                // Timeout reached -> exponential backoff 2^N
-                /*if(error == MSG_TIMEOUT){
-                    backoff*=2;
-                    //free(dsinput_file_request);
-                    //MSG_task_destroy(dsinput_file_reply_task);
-                    continue;
-                }*/
-
                 // Log request
-                database->rfiles_mutex->lock();
-                database->rfiles[i]++;
-                database->rfiles_mutex->unlock();
+                project.rfiles_mutex->lock();
+                project.rfiles[i]++;
+                project.rfiles_mutex->unlock();
 
                 break;
             }
@@ -2758,7 +1881,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
     // Insert received tasks in tasks swag
     for (int32_t i = 0; i < (int32_t)sswork_reply->number_tasks; i++)
     {
-        task_t t = sswork_reply->tasks[i];
+        TaskT *t = sswork_reply->tasks[i];
         t->msg_task = simgrid::s4u::Exec::init();
         t->msg_task->set_name(t->name);
         t->msg_task->set_flops_amount(t->duration);
@@ -2784,9 +1907,8 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 static void client_update_shortfall(client_t client)
 {
     // printf("Executing client_update_shortfall\n");
-    task_t task;
-    project_t proj;
-    std::map<std::string, project_t> &projects = client->projects;
+    TaskT *task;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
     double total_time_proj;
     double total_time = 0;
     int64_t power; // (maximum 2⁶³-1)
@@ -2811,12 +1933,12 @@ static void client_update_shortfall(client_t client)
         }
         total_time += total_time_proj;
         /* amount of work needed - total already loaded */
-        proj->shortfall = _group_info[client->group_number].connection_interval * proj->priority / client->sum_priority - total_time_proj;
+        proj->shortfall = SharedDatabase::_group_info[client->group_number].connection_interval * proj->priority / client->sum_priority - total_time_proj;
 
         if (proj->shortfall < 0)
             proj->shortfall = 0;
     }
-    client->total_shortfall = _group_info[client->group_number].connection_interval - total_time;
+    client->total_shortfall = SharedDatabase::_group_info[client->group_number].connection_interval - total_time;
     if (client->total_shortfall < 0)
         client->total_shortfall = 0;
 }
@@ -2826,7 +1948,6 @@ static void client_update_shortfall(client_t client)
 */
 static int client_work_fetch(client_t client)
 {
-    project_t selected_proj = NULL;
     static char first = 1;
     double work_percentage = 0;
     double control, sleep;
@@ -2835,7 +1956,7 @@ static int client_work_fetch(client_t client)
     sg4::this_actor::sleep_for(uniform_ab(0, 3600));
 
     // client_t client = MSG_process_get_data(MSG_process_self());
-    std::map<std::string, project_t> &projects = client->projects;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
 
     // printf("Running thread work fetch client %s\n", client->name);
 
@@ -2855,7 +1976,7 @@ static int client_work_fetch(client_t client)
             sleep = client->suspended;
             client->suspended = 0;
             client->ask_for_work_mutex->unlock();
-            printf("sleep time: %f\n", sleep);
+            // printf("sleep time: %f\n", sleep);
             sg4::this_actor::sleep_for(sleep);
             client->ask_for_work_mutex->lock();
 
@@ -2866,7 +1987,7 @@ static int client_work_fetch(client_t client)
 
         client_update_shortfall(client);
 
-        selected_proj = NULL;
+        ProjectInstanceOnClient *selected_proj = nullptr;
         for (auto &[key, proj] : projects)
         {
             /* if there are no running tasks so we can download from all projects. Don't waste processing time */
@@ -2876,7 +1997,7 @@ static int client_work_fetch(client_t client)
             {
                 continue;
             }
-            if (!client->no_actions && proj->long_debt < -_group_info[client->group_number].scheduling_interval)
+            if (!client->no_actions && proj->long_debt < -SharedDatabase::_group_info[client->group_number].scheduling_interval)
             {
                 continue;
             }
@@ -2975,7 +2096,7 @@ This function is called every schedulingInterval and when an action finishes
 The wall_cpu_time must be updated when this function is called */
 static void client_clean_short_debt(const client_t client)
 {
-    std::map<std::string, project_t> projects = client->projects;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
 
     /* calcule a */
     for (auto &[key, proj] : projects)
@@ -2990,7 +2111,7 @@ static void client_update_debt(client_t client)
     double a, w, w_short;
     double total_debt_short = 0;
     double total_debt_long = 0;
-    std::map<std::string, project_t> projects = client->projects;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
     a = 0;
     double sum_priority_run_proj = 0; /* sum of priority of runnable projects, used to calculate short_term debt */
     int num_project_short = 0;
@@ -3044,7 +2165,7 @@ static void client_update_debt(client_t client)
 
 /*****************************************************************************/
 /* verify whether the task will miss its deadline if it executes alone on cpu */
-static int deadline_missed(task_t task)
+static int deadline_missed(TaskT *task)
 {
     int64_t power; // (maximum 2⁶³-1)
     double remains;
@@ -3061,9 +2182,9 @@ static int deadline_missed(task_t task)
 }
 
 /* simulate task scheduling and verify if it will miss its deadline */
-static int task_deadline_missed_sim(client_t client, project_t proj, task_t task)
+static int task_deadline_missed_sim(client_t client, ProjectInstanceOnClient *proj, TaskT *task)
 {
-    return task->sim_finish > (task->start + task->deadline - _group_info[client->group_number].scheduling_interval) * 0.9;
+    return task->sim_finish > (task->start + task->deadline - SharedDatabase::_group_info[client->group_number].scheduling_interval) * 0.9;
 }
 
 static void client_update_simulate_finish_time(client_t client)
@@ -3071,7 +2192,7 @@ static void client_update_simulate_finish_time(client_t client)
     int total_tasks = 0;
     double clock_sim = sg4::Engine::get_clock();
     int64_t power = client->power;
-    std::map<std::string, project_t> projects = client->projects;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
 
     for (auto &[key, proj] : projects)
     {
@@ -3093,7 +2214,7 @@ static void client_update_simulate_finish_time(client_t client)
     while (total_tasks)
     {
         double sum_priority = 0.0;
-        task_t min_task = NULL;
+        TaskT *min_task = NULL;
         double min = 0.0;
 
         /* sum priority of projects with tasks to execute */
@@ -3106,7 +2227,7 @@ static void client_update_simulate_finish_time(client_t client)
         /* update sim_finish and find next action to finish */
         for (auto &[key, proj] : projects)
         {
-            task_t task;
+            TaskT *task;
 
             for (auto &task : proj->sim_tasks)
             {
@@ -3138,9 +2259,8 @@ static void client_update_simulate_finish_time(client_t client)
 /* verify whether the actions in client's list will miss their deadline and put them in client->deadline_missed */
 static void client_update_deadline_missed(client_t client)
 {
-    task_t task, task_next;
-    project_t proj;
-    std::map<std::string, project_t> projects = client->projects;
+    TaskT *task, task_next;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
 
     client_update_simulate_finish_time(client);
 
@@ -3179,7 +2299,7 @@ static void client_enforcement_policy()
     return;
 }
 
-static void schedule_job(client_t client, task_t job)
+static void schedule_job(client_t client, TaskT *job)
 {
     /* task already running, just return */
     if (job->running)
@@ -3211,14 +2331,14 @@ static void schedule_job(client_t client, task_t job)
     if (job->project->running_task != NULL)
     {
         double remains;
-        task_t task_temp = job->project->running_task;
+        TaskT *task_temp = job->project->running_task;
         remains = task_temp->msg_task->get_remaining() * client->factor;
         task_temp->msg_task->cancel();
-        // task_temp->msg_task.~intrusive_ptr();
+        // TaskT *emp->msg_task.~intrusive_ptr();
         task_temp->msg_task = sg4::Exec::init();
         task_temp->msg_task->set_name(task_temp->name);
         task_temp->msg_task->set_flops_amount(remains);
-        // printf("Creating task(%s)(%p) again, remains %lf\n", task_temp->name, task_temp, remains);
+        // printf("Creating task(%s)(%p) again, remains %lf\n", TaskT *emp->name, TaskT *emp, remains);
 
         task_temp->scheduled = 0;
         task_temp->running = 0;
@@ -3241,8 +2361,8 @@ static void schedule_job(client_t client, task_t job)
 FIXME: if the task finish exactly at the same time of this function is called (i.e. remains = 0). We loose a schedulingInterval of processing time, cause we schedule it again */
 static void client_cpu_scheduling(client_t client)
 {
-    project_t proj, great_debt_proj = NULL;
-    std::map<std::string, project_t> projects = client->projects;
+    ProjectInstanceOnClient *proj = nullptr, *great_debt_proj = nullptr;
+    std::map<std::string, ProjectInstanceOnClient *> projects = client->projects;
     double great_debt;
 
 #if 0
@@ -3256,7 +2376,7 @@ static void client_cpu_scheduling(client_t client)
     // printf("-------------------   1 %g\n", sg4::Engine::get_clock());
     while (!client->deadline_missed.empty())
     {
-        task_t task = *client->deadline_missed.begin();
+        TaskT *task = *client->deadline_missed.begin();
         client->deadline_missed.erase(client->deadline_missed.begin());
 
         // printf("-------------------   2\n");
@@ -3296,7 +2416,7 @@ static void client_cpu_scheduling(client_t client)
     {
         // printf("==============================  5\n");
         great_debt_proj = NULL;
-        task_t task = NULL;
+        TaskT *task = NULL;
         for (auto it = projects.begin(); it != projects.end(); ++it)
         {
             proj = it->second;
@@ -3346,9 +2466,9 @@ static void client_cpu_scheduling(client_t client)
 
 /*****************************************************************************/
 
-static int client_execute_tasks(project_t proj)
+static int client_execute_tasks(ProjectInstanceOnClient *proj)
 {
-    task_t task;
+    TaskT *task;
     int32_t number;
 
     // printf("Running thread to execute tasks from project %s in %s  %g\n", proj->name, 			MSG_host_get_name(MSG_host_self()),  MSG_get_host_speed(MSG_host_self()));
@@ -3445,58 +2565,58 @@ static client_t client_new(int argc, char *argv[])
     // Initialize values
     if (argc > 3)
     {
-        _group_info[group_number].group_power = (int32_t)sg4::this_actor::get_host()->get_speed();
-        _group_info[group_number].n_clients = (int32_t)atoi(argv[index++]);
-        _group_info[group_number].connection_interval = atof(argv[index++]);
-        _group_info[group_number].scheduling_interval = atof(argv[index++]);
-        _group_info[group_number].max_power = atof(argv[index++]);
-        _group_info[group_number].min_power = atof(argv[index++]);
-        _group_info[group_number].sp_distri = (char)atoi(argv[index++]);
-        _group_info[group_number].sa_param = atof(argv[index++]);
-        _group_info[group_number].sb_param = atof(argv[index++]);
-        _group_info[group_number].db_distri = (char)atoi(argv[index++]);
-        _group_info[group_number].da_param = atof(argv[index++]);
-        _group_info[group_number].db_param = atof(argv[index++]);
-        _group_info[group_number].av_distri = (char)atoi(argv[index++]);
-        _group_info[group_number].aa_param = atof(argv[index++]);
-        _group_info[group_number].ab_param = atof(argv[index++]);
-        _group_info[group_number].nv_distri = (char)atoi(argv[index++]);
-        _group_info[group_number].na_param = atof(argv[index++]);
-        _group_info[group_number].nb_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].group_power = (int32_t)sg4::this_actor::get_host()->get_speed();
+        SharedDatabase::_group_info[group_number].n_clients = (int32_t)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].connection_interval = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].scheduling_interval = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].max_power = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].min_power = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].sp_distri = (char)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].sa_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].sb_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].db_distri = (char)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].da_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].db_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].av_distri = (char)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].aa_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].ab_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].nv_distri = (char)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].na_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].nb_param = atof(argv[index++]);
         if ((argc - 20) % 3 != 0)
         {
             aux = atof(argv[index++]);
         }
-        _group_info[group_number].proj_args = &argv[index];
-        _group_info[group_number].on = argc - index;
+        SharedDatabase::_group_info[group_number].proj_args = &argv[index];
+        SharedDatabase::_group_info[group_number].on = argc - index;
 
-        _group_info[group_number].cond->notify_all();
+        SharedDatabase::_group_info[group_number].cond->notify_all();
     }
     else
     {
-        std::unique_lock lock(*_group_info[group_number].mutex);
-        while (_group_info[group_number].on == 0)
-            _group_info[group_number].cond->wait(lock);
+        std::unique_lock lock(*SharedDatabase::_group_info[group_number].mutex);
+        while (SharedDatabase::_group_info[group_number].on == 0)
+            SharedDatabase::_group_info[group_number].cond->wait(lock);
         if (argc == 3)
             aux = atof(argv[index]);
     }
 
     if (aux == -1)
     {
-        aux = ran_distri(_group_info[group_number].sp_distri, _group_info[group_number].sa_param, _group_info[group_number].sb_param);
-        if (aux > _group_info[group_number].max_power)
-            aux = _group_info[group_number].max_power;
-        else if (aux < _group_info[group_number].min_power)
-            aux = _group_info[group_number].min_power;
+        aux = ran_distri(SharedDatabase::_group_info[group_number].sp_distri, SharedDatabase::_group_info[group_number].sa_param, SharedDatabase::_group_info[group_number].sb_param);
+        if (aux > SharedDatabase::_group_info[group_number].max_power)
+            aux = SharedDatabase::_group_info[group_number].max_power;
+        else if (aux < SharedDatabase::_group_info[group_number].min_power)
+            aux = SharedDatabase::_group_info[group_number].min_power;
     }
 
     client->power = (int64_t)(aux * 1000000000.0);
 
-    client->factor = (double)client->power / _group_info[group_number].group_power;
+    client->factor = (double)client->power / SharedDatabase::_group_info[group_number].group_power;
 
     client->name = sg4::this_actor::get_host()->get_name();
 
-    client_initialize_projects(client, _group_info[group_number].on, _group_info[group_number].proj_args);
+    client_initialize_projects(client, SharedDatabase::_group_info[group_number].on, SharedDatabase::_group_info[group_number].proj_args);
     // client->deadline_missed; // FELIX, antes había 8. = xbt_heap_new(8, NULL)
 
     // printf("Client power: %f GFLOPS\n", client->power/1000000000.0);
@@ -3525,7 +2645,7 @@ static client_t client_new(int argc, char *argv[])
     work_string = bprintf("work_fetch:%s", client->name.c_str());
     client->work_fetch_thread = sg4::Actor::create(work_string, sg4::this_actor::get_host(), client_work_fetch, client);
 
-    // printf("Starting client %s, ConnectionInterval %lf SchedulingInterval %lf\n", client->name, _group_info[client->group_number].connection_interval, _group_power[client->group_number].scheduling_interval);
+    // printf("Starting client %s, ConnectionInterval %lf SchedulingInterval %lf\n", client->name, SharedDatabase::_group_info[client->group_number].connection_interval, _group_power[client->group_number].scheduling_interval);
 
     /* start one thread to each project to run tasks */
     for (auto &[key, proj] : client->projects)
@@ -3554,8 +2674,6 @@ static client_t client_new(int argc, char *argv[])
 int client(int argc, char *argv[])
 {
     client_t client;
-    project_t proj;
-    ssmessage_t msg;
     dsmessage_t msg2;
     int working = 0, i;
     int time_sim = 0;
@@ -3576,7 +2694,7 @@ int client(int argc, char *argv[])
         if (!working)
         {
             working = 1;
-            random = (ran_distri(_group_info[client->group_number].av_distri, _group_info[client->group_number].aa_param, _group_info[client->group_number].ab_param) * 3600.0);
+            random = (ran_distri(SharedDatabase::_group_info[client->group_number].av_distri, SharedDatabase::_group_info[client->group_number].aa_param, SharedDatabase::_group_info[client->group_number].ab_param) * 3600.0);
             if (ceil(random + sg4::Engine::get_clock()) >= maxtt)
             {
                 // printf("%f\n", random);
@@ -3610,7 +2728,7 @@ int client(int argc, char *argv[])
         if (working && ceil(sg4::Engine::get_clock()) >= time)
         {
             working = 0;
-            random = (ran_distri(_group_info[client->group_number].nv_distri, _group_info[client->group_number].na_param, _group_info[client->group_number].nb_param) * 3600.0);
+            random = (ran_distri(SharedDatabase::_group_info[client->group_number].nv_distri, SharedDatabase::_group_info[client->group_number].na_param, SharedDatabase::_group_info[client->group_number].nb_param) * 3600.0);
 
             if (ceil(random + sg4::Engine::get_clock()) > maxtt)
             {
@@ -3645,7 +2763,7 @@ int client(int argc, char *argv[])
 
         try
         {
-            time_wait = std::min(maxtt - sg4::Engine::get_clock(), _group_info[client->group_number].scheduling_interval);
+            time_wait = std::min(maxtt - sg4::Engine::get_clock(), SharedDatabase::_group_info[client->group_number].scheduling_interval);
             if (time_wait < 0)
                 time_wait = 0;
             std::unique_lock lock(*client->sched_mutex);
@@ -3680,34 +2798,34 @@ int client(int argc, char *argv[])
     // Print client finish
     // printf("Client %s %f GLOPS finish en %g sec. %g horas.\t Working: %0.1f%% \t Not working %0.1f%%\n", client->name, client->power/1000000000.0, t0, t0/3600.0, available*100/(available+notavailable), (notavailable)*100/(available+notavailable));
 
-    _group_info[client->group_number].mutex->lock();
-    _group_info[client->group_number].total_available += available * 100 / (available + notavailable);
-    _group_info[client->group_number].total_notavailable += (notavailable) * 100 / (available + notavailable);
-    _group_info[client->group_number].total_power += power;
-    _group_info[client->group_number].mutex->unlock();
+    SharedDatabase::_group_info[client->group_number].mutex->lock();
+    SharedDatabase::_group_info[client->group_number].total_available += available * 100 / (available + notavailable);
+    SharedDatabase::_group_info[client->group_number].total_notavailable += (notavailable) * 100 / (available + notavailable);
+    SharedDatabase::_group_info[client->group_number].total_power += power;
+    SharedDatabase::_group_info[client->group_number].mutex->unlock();
 
     // Finish client
     _oclient_mutex->lock();
     for (auto &[key, proj] : client->projects)
     {
         proj->thread->kill();
-        _pdatabase[(int)proj->number].nfinished_oclients++;
+        SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients++;
         // printf("%s, Num_clients: %d, Total_clients: %d\n", client->name, num_clients[proj->number], nclients[proj->number]);
         //  Send finishing message to project_database
-        if (_pdatabase[(int)proj->number].nfinished_oclients == _pdatabase[(int)proj->number].nordinary_clients)
+        if (SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients == SharedDatabase::_pdatabase[(int)proj->number].nordinary_clients)
         {
-            for (i = 0; i < _pdatabase[(int)proj->number].nscheduling_servers; i++)
+            for (i = 0; i < SharedDatabase::_pdatabase[(int)proj->number].nscheduling_servers; i++)
             {
-                msg = new s_ssmessage_t();
+                SchedulingServerMessage *msg = new SchedulingServerMessage();
                 msg->type = TERMINATION;
-                auto ser_n_mb = _pdatabase[(int)proj->number].scheduling_servers[i];
+                auto ser_n_mb = SharedDatabase::_pdatabase[(int)proj->number].scheduling_servers[i];
                 sg4::Mailbox::by_name(ser_n_mb)->put(msg, 1);
             }
-            for (i = 0; i < _pdatabase[(int)proj->number].ndata_clients; i++)
+            for (i = 0; i < SharedDatabase::_pdatabase[(int)proj->number].ndata_clients; i++)
             {
                 msg2 = new s_dsmessage_t();
                 msg2->type = TERMINATION;
-                auto cl_n_mb = _pdatabase[(int)proj->number].data_clients[i];
+                auto cl_n_mb = SharedDatabase::_pdatabase[(int)proj->number].data_clients[i];
 
                 sg4::Mailbox::by_name(cl_n_mb)->put(msg2, 1);
             }
@@ -3765,10 +2883,10 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
 
     // for (i = 0; i < NUMBER_CLIENT_GROUPS; i++)
     // {
-    //     printf(" Group %d. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n", i, (double)_group_info[i].total_power / _group_info[i].n_clients / 1000000000.0, _group_info[i].total_available * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable), (_group_info[i].total_notavailable) * 100.0 / (_group_info[i].total_available + _group_info[i].total_notavailable));
-    //     _total_power += _group_info[i].total_power;
-    //     _total_available += _group_info[i].total_available;
-    //     _total_notavailable += _group_info[i].total_notavailable;
+    //     printf(" Group %d. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n", i, (double)SharedDatabase::_group_info[i].total_power / SharedDatabase::_group_info[i].n_clients / 1000000000.0, SharedDatabase::_group_info[i].total_available * 100.0 / (SharedDatabase::_group_info[i].total_available + SharedDatabase::_group_info[i].total_notavailable), (SharedDatabase::_group_info[i].total_notavailable) * 100.0 / (SharedDatabase::_group_info[i].total_available + SharedDatabase::_group_info[i].total_notavailable));
+    //     _total_power += SharedDatabase::_group_info[i].total_power;
+    //     _total_available += SharedDatabase::_group_info[i].total_available;
+    //     _total_notavailable += SharedDatabase::_group_info[i].total_notavailable;
     // }
 
     // printf("\n Clients. Average power: %f GFLOPS. Available: %0.1f%% Not available %0.1f%%\n\n", (double)_total_power / NUMBER_CLIENTS / 1000000000.0, _total_available * 100.0 / (_total_available + _total_notavailable), (_total_notavailable) * 100.0 / (_total_available + _total_notavailable));
@@ -3803,155 +2921,155 @@ int main(int argc, char *argv[])
     _total_power = 0;
     _total_available = 0;
     _total_notavailable = 0;
-    _pdatabase = new s_pdatabase_t[NUMBER_PROJECTS];
-    _sserver_info = new s_sserver_t[NUMBER_SCHEDULING_SERVERS];
-    _dserver_info = new s_dserver_t[NUMBER_DATA_SERVERS];
-    _dcserver_info = new s_dcserver_t[NUMBER_DATA_CLIENT_SERVERS];
-    _dclient_info = new s_dclient_t[NUMBER_DATA_CLIENTS];
-    _group_info = new s_group_t[NUMBER_CLIENT_GROUPS];
+    SharedDatabase::_pdatabase.resize(NUMBER_PROJECTS);
+    SharedDatabase::_sserver_info = new s_sserver_t[NUMBER_SCHEDULING_SERVERS];
+    SharedDatabase::_dserver_info = new s_dserver_t[NUMBER_DATA_SERVERS];
+    SharedDatabase::_dcserver_info = new s_dcserver_t[NUMBER_DATA_CLIENT_SERVERS];
+    SharedDatabase::_dclient_info = new s_dclient_t[NUMBER_DATA_CLIENTS];
+    SharedDatabase::_group_info = new s_group_t[NUMBER_CLIENT_GROUPS];
 
     for (int i = 0; i < NUMBER_PROJECTS; i++)
     {
         /* Project attributes */
 
-        _pdatabase[i].nclients = (int32_t)atoi(argv[i + 3]);
-        _pdatabase[i].ndata_clients = (int32_t)atoi(argv[i + NUMBER_PROJECTS + 3]);
-        _pdatabase[i].nordinary_clients = _pdatabase[i].nclients - _pdatabase[i].ndata_clients;
-        _pdatabase[i].nscheduling_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 2 + 3]);
-        _pdatabase[i].scheduling_servers.resize((int)_pdatabase[i].nscheduling_servers);
-        for (j = 0; j < _pdatabase[i].nscheduling_servers; j++)
-            _pdatabase[i].scheduling_servers[j] = std::string(bprintf("s%" PRId32 "%" PRId32, i + 1, j));
+        SharedDatabase::_pdatabase[i].nclients = (int32_t)atoi(argv[i + 3]);
+        SharedDatabase::_pdatabase[i].ndata_clients = (int32_t)atoi(argv[i + NUMBER_PROJECTS + 3]);
+        SharedDatabase::_pdatabase[i].nordinary_clients = SharedDatabase::_pdatabase[i].nclients - SharedDatabase::_pdatabase[i].ndata_clients;
+        SharedDatabase::_pdatabase[i].nscheduling_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 2 + 3]);
+        SharedDatabase::_pdatabase[i].scheduling_servers.resize((int)SharedDatabase::_pdatabase[i].nscheduling_servers);
+        for (j = 0; j < SharedDatabase::_pdatabase[i].nscheduling_servers; j++)
+            SharedDatabase::_pdatabase[i].scheduling_servers[j] = std::string(bprintf("s%" PRId32 "%" PRId32, i + 1, j));
 
-        _pdatabase[i].ndata_client_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 3 + 3]);
-        _pdatabase[i].data_client_servers.resize((int)_pdatabase[i].ndata_client_servers);
-        for (j = 0; j < _pdatabase[i].ndata_client_servers; j++)
+        SharedDatabase::_pdatabase[i].ndata_client_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 3 + 3]);
+        SharedDatabase::_pdatabase[i].data_client_servers.resize((int)SharedDatabase::_pdatabase[i].ndata_client_servers);
+        for (j = 0; j < SharedDatabase::_pdatabase[i].ndata_client_servers; j++)
         {
-            _pdatabase[i].data_client_servers[j] = std::string(bprintf("t%" PRId32 "%" PRId32, i + 1, j));
+            SharedDatabase::_pdatabase[i].data_client_servers[j] = std::string(bprintf("t%" PRId32 "%" PRId32, i + 1, j));
         }
-        _pdatabase[i].data_clients.resize(_pdatabase[i].ndata_clients);
-        // for (j = 0; j < _pdatabase[i].ndata_clients; j++)
-        //     _pdatabase[i].data_clients[j] = NULL;
+        SharedDatabase::_pdatabase[i].data_clients.resize(SharedDatabase::_pdatabase[i].ndata_clients);
+        // for (j = 0; j < SharedDatabase::_pdatabase[i].ndata_clients; j++)
+        //     SharedDatabase::_pdatabase[i].data_clients[j] = NULL;
 
-        _pdatabase[i].nfinished_oclients = 0;
-        _pdatabase[i].nfinished_dclients = 0;
+        SharedDatabase::_pdatabase[i].nfinished_oclients = 0;
+        SharedDatabase::_pdatabase[i].nfinished_dclients = 0;
 
         /* Work generator */
 
-        _pdatabase[i].ncurrent_results = 0;
-        _pdatabase[i].ncurrent_workunits = 0;
-        _pdatabase[i].current_results;
-        _pdatabase[i].r_mutex = sg4::Mutex::create();
-        _pdatabase[i].ncurrent_error_results = 0;
-        _pdatabase[i].current_error_results;
-        _pdatabase[i].w_mutex = sg4::Mutex::create();
-        _pdatabase[i].er_mutex = sg4::Mutex::create();
-        _pdatabase[i].wg_empty = sg4::ConditionVariable::create();
-        _pdatabase[i].wg_full = sg4::ConditionVariable::create();
-        _pdatabase[i].wg_end = 0;
-        _pdatabase[i].wg_dcs = 0;
+        SharedDatabase::_pdatabase[i].ncurrent_results = 0;
+        SharedDatabase::_pdatabase[i].ncurrent_workunits = 0;
+        SharedDatabase::_pdatabase[i].current_results;
+        SharedDatabase::_pdatabase[i].r_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].ncurrent_error_results = 0;
+        SharedDatabase::_pdatabase[i].current_error_results;
+        SharedDatabase::_pdatabase[i].w_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].er_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].wg_empty = sg4::ConditionVariable::create();
+        SharedDatabase::_pdatabase[i].wg_full = sg4::ConditionVariable::create();
+        SharedDatabase::_pdatabase[i].wg_end = 0;
+        SharedDatabase::_pdatabase[i].wg_dcs = 0;
 
         /* Validator */
 
-        _pdatabase[i].ncurrent_validations = 0;
-        _pdatabase[i].current_validations;
-        _pdatabase[i].v_mutex = sg4::Mutex::create();
-        _pdatabase[i].v_empty = sg4::ConditionVariable::create();
-        _pdatabase[i].v_end = 0;
+        SharedDatabase::_pdatabase[i].ncurrent_validations = 0;
+        SharedDatabase::_pdatabase[i].current_validations;
+        SharedDatabase::_pdatabase[i].v_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].v_empty = sg4::ConditionVariable::create();
+        SharedDatabase::_pdatabase[i].v_end = 0;
 
         /* Assimilator */
 
-        _pdatabase[i].ncurrent_assimilations = 0;
-        _pdatabase[i].current_assimilations;
-        _pdatabase[i].a_mutex = sg4::Mutex::create();
-        _pdatabase[i].a_empty = sg4::ConditionVariable::create();
-        _pdatabase[i].a_end = 0;
+        SharedDatabase::_pdatabase[i].ncurrent_assimilations = 0;
+        SharedDatabase::_pdatabase[i].current_assimilations;
+        SharedDatabase::_pdatabase[i].a_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].a_empty = sg4::ConditionVariable::create();
+        SharedDatabase::_pdatabase[i].a_end = 0;
 
         /* Data clients */
 
-        _pdatabase[i].rfiles_mutex = sg4::Mutex::create();
-        _pdatabase[i].dcrfiles_mutex = sg4::Mutex::create();
-        _pdatabase[i].dsuploads_mutex = sg4::Mutex::create();
-        _pdatabase[i].dcuploads_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].rfiles_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].dcrfiles_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].dsuploads_mutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].dcuploads_mutex = sg4::Mutex::create();
 
         /* Input files */
 
-        _pdatabase[i].ninput_files = 0;
-        // _pdatabase[i].input_files;
-        // _pdatabase[i].i_mutex = sg4::Mutex::create();
-        // _pdatabase[i].i_empty = sg4::ConditionVariable::create();
-        // _pdatabase[i].i_full = sg4::ConditionVariable::create();
+        SharedDatabase::_pdatabase[i].ninput_files = 0;
+        // SharedDatabase::_pdatabase[i].input_files;
+        // SharedDatabase::_pdatabase[i].i_mutex = sg4::Mutex::create();
+        // SharedDatabase::_pdatabase[i].i_empty = sg4::ConditionVariable::create();
+        // SharedDatabase::_pdatabase[i].i_full = sg4::ConditionVariable::create();
 
         /* File deleter */
 
-        _pdatabase[i].ncurrent_deletions = 0;
-        _pdatabase[i].current_deletions;
+        SharedDatabase::_pdatabase[i].ncurrent_deletions = 0;
+        SharedDatabase::_pdatabase[i].current_deletions;
 
         /* Output files */
 
-        // _pdatabase[i].noutput_files = 0;
-        // _pdatabase[i].output_files;
-        // _pdatabase[i].o_mutex = sg4::Mutex::create();
-        // _pdatabase[i].o_empty = sg4::ConditionVariable::create();
-        // _pdatabase[i].o_full = sg4::ConditionVariable::create();
+        // SharedDatabase::_pdatabase[i].noutput_files = 0;
+        // SharedDatabase::_pdatabase[i].output_files;
+        // SharedDatabase::_pdatabase[i].o_mutex = sg4::Mutex::create();
+        // SharedDatabase::_pdatabase[i].o_empty = sg4::ConditionVariable::create();
+        // SharedDatabase::_pdatabase[i].o_full = sg4::ConditionVariable::create();
 
         /* Synchronization */
 
-        _pdatabase[i].ssrmutex = sg4::Mutex::create();
-        _pdatabase[i].ssdmutex = sg4::Mutex::create();
-        _pdatabase[i].dcmutex = sg4::Mutex::create();
-        _pdatabase[i].barrier = sg4::Barrier::create(_pdatabase[i].nscheduling_servers + _pdatabase[i].ndata_client_servers + 4);
+        SharedDatabase::_pdatabase[i].ssrmutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].ssdmutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].dcmutex = sg4::Mutex::create();
+        SharedDatabase::_pdatabase[i].barrier = sg4::Barrier::create(SharedDatabase::_pdatabase[i].nscheduling_servers + SharedDatabase::_pdatabase[i].ndata_client_servers + 4);
     }
 
     for (j = 0; j < NUMBER_SCHEDULING_SERVERS; j++)
     {
-        _sserver_info[j].mutex = sg4::Mutex::create();
-        _sserver_info[j].cond = sg4::ConditionVariable::create();
-        _sserver_info[j].client_requests;
-        _sserver_info[j].Nqueue = 0;
-        _sserver_info[j].EmptyQueue = 0;
-        _sserver_info[j].time_busy = 0;
+        SharedDatabase::_sserver_info[j].mutex = sg4::Mutex::create();
+        SharedDatabase::_sserver_info[j].cond = sg4::ConditionVariable::create();
+        SharedDatabase::_sserver_info[j].client_requests;
+        SharedDatabase::_sserver_info[j].Nqueue = 0;
+        SharedDatabase::_sserver_info[j].EmptyQueue = 0;
+        SharedDatabase::_sserver_info[j].time_busy = 0;
     }
 
     for (j = 0; j < NUMBER_DATA_SERVERS; j++)
     {
-        _dserver_info[j].mutex = sg4::Mutex::create();
-        _dserver_info[j].cond = sg4::ConditionVariable::create();
-        _dserver_info[j].client_requests;
-        _dserver_info[j].Nqueue = 0;
-        _dserver_info[j].EmptyQueue = 0;
-        _dserver_info[j].time_busy = 0;
+        SharedDatabase::_dserver_info[j].mutex = sg4::Mutex::create();
+        SharedDatabase::_dserver_info[j].cond = sg4::ConditionVariable::create();
+        SharedDatabase::_dserver_info[j].client_requests;
+        SharedDatabase::_dserver_info[j].Nqueue = 0;
+        SharedDatabase::_dserver_info[j].EmptyQueue = 0;
+        SharedDatabase::_dserver_info[j].time_busy = 0;
     }
 
     for (j = 0; j < NUMBER_DATA_CLIENT_SERVERS; j++)
     {
-        _dcserver_info[j].mutex = sg4::Mutex::create();
-        _dcserver_info[j].cond = sg4::ConditionVariable::create();
-        _dcserver_info[j].client_requests;
-        _dcserver_info[j].Nqueue = 0;
-        _dcserver_info[j].EmptyQueue = 0;
-        _dcserver_info[j].time_busy = 0;
+        SharedDatabase::_dcserver_info[j].mutex = sg4::Mutex::create();
+        SharedDatabase::_dcserver_info[j].cond = sg4::ConditionVariable::create();
+        SharedDatabase::_dcserver_info[j].client_requests;
+        SharedDatabase::_dcserver_info[j].Nqueue = 0;
+        SharedDatabase::_dcserver_info[j].EmptyQueue = 0;
+        SharedDatabase::_dcserver_info[j].time_busy = 0;
     }
 
     for (j = 0; j < NUMBER_DATA_CLIENTS; j++)
     {
-        _dclient_info[j].mutex = sg4::Mutex::create();
-        _dclient_info[j].ask_for_files_mutex = sg4::Mutex::create();
-        _dclient_info[j].cond = sg4::ConditionVariable::create();
-        _dclient_info[j].client_requests;
-        _dclient_info[j].Nqueue = 0;
-        _dclient_info[j].EmptyQueue = 0;
-        _dclient_info[j].time_busy = 0;
-        _dclient_info[j].finish = 0;
+        SharedDatabase::_dclient_info[j].mutex = sg4::Mutex::create();
+        SharedDatabase::_dclient_info[j].ask_for_files_mutex = sg4::Mutex::create();
+        SharedDatabase::_dclient_info[j].cond = sg4::ConditionVariable::create();
+        SharedDatabase::_dclient_info[j].client_requests;
+        SharedDatabase::_dclient_info[j].Nqueue = 0;
+        SharedDatabase::_dclient_info[j].EmptyQueue = 0;
+        SharedDatabase::_dclient_info[j].time_busy = 0;
+        SharedDatabase::_dclient_info[j].finish = 0;
     }
 
     for (j = 0; j < NUMBER_CLIENT_GROUPS; j++)
     {
-        _group_info[j].total_power = 0;
-        _group_info[j].total_available = 0;
-        _group_info[j].total_notavailable = 0;
-        _group_info[j].on = 0;
-        _group_info[j].mutex = sg4::Mutex::create();
-        _group_info[j].cond = sg4::ConditionVariable::create();
+        SharedDatabase::_group_info[j].total_power = 0;
+        SharedDatabase::_group_info[j].total_available = 0;
+        SharedDatabase::_group_info[j].total_notavailable = 0;
+        SharedDatabase::_group_info[j].on = 0;
+        SharedDatabase::_group_info[j].mutex = sg4::Mutex::create();
+        SharedDatabase::_group_info[j].cond = sg4::ConditionVariable::create();
     }
 
     _oclient_mutex = sg4::Mutex::create();
