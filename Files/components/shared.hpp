@@ -1,10 +1,16 @@
 #pragma once
 #include "types.hpp"
 
+// todo: fix ./generator to set values in this file, not in boinc.cpp
 #define WARM_UP_TIME 20        // Warm up time in hours
 #define MAX_SIMULATED_TIME 100 // Simulation time in hours
 #define PRECISION 0.00001      // Accuracy (used in client_work_fetch())
 #define REPLY_SIZE 10 * KB     // Reply size
+
+#define NUMBER_CLIENTS 1000     // Number of clients
+#define NUMBER_DATA_CLIENTS 100 // Number of data clients
+#define NUMBER_ORDINARY_CLIENTS (NUMBER_CLIENTS - NUMBER_DATA_CLIENTS)
+#define REQUEST_SIZE 10 * KB // Request size
 
 /* Simulation time */
 const double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600; // Total simulation time in seconds

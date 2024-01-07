@@ -2,7 +2,7 @@
  * @attention the point of variation for the research
  */
 
-#include "data_client_server_for_cluster.hpp"
+#include "data_client_server.hpp"
 #include <iostream>
 #include <simgrid/s4u.hpp>
 #include <math.h>

@@ -20,7 +20,6 @@ typedef enum
     REQUEST,
     REPLY,
     TERMINATION,
-    NO
 } message_type; // Message type
 typedef enum
 {
