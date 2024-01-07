@@ -3,6 +3,7 @@
 
 #define WARM_UP_TIME 20        // Warm up time in hours
 #define MAX_SIMULATED_TIME 100 // Simulation time in hours
+#define PRECISION 0.00001      // Accuracy (used in client_work_fetch())
 
 /* Simulation time */
 const double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600; // Total simulation time in seconds
