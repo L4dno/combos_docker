@@ -6,6 +6,8 @@
 #define MAX_SIMULATED_TIME 100 // Simulation time in hours
 #define PRECISION 0.00001      // Accuracy (used in client_work_fetch())
 #define REPLY_SIZE 10 * KB     // Reply size
+#define CREDITS_CPU_S 0.002315 // Credits per second (1 GFLOP machine)
+#define WORK_FETCH_PERIOD 60   // Work fetch period
 
 #define NUMBER_CLIENTS 1000     // Number of clients
 #define NUMBER_DATA_CLIENTS 100 // Number of data clients
