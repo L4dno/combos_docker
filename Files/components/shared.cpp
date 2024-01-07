@@ -45,3 +45,30 @@ void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)
         pending_comms.pop_back();
     } while (!pending_comms.empty());
 }
+
+/*
+ *	Generate result
+ */
+AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workunit, int X)
+{
+
+    AssignedResult *result = new AssignedResult();
+    result->workunit = workunit;
+    result->ninput_files = workunit->ninput_files;
+    result->input_files = workunit->input_files;
+    project.ncurrent_results++;
+    project.nresults++;
+
+    // workunit->times[(int)workunit->ntotal_results++] = sg4::Engine::get_clock();
+    workunit->times.push_back(sg4::Engine::get_clock());
+    workunit->ntotal_results++;
+
+    if (X == 1)
+        workunit->ncurrent_error_results--;
+
+    // todo: у нас кто-нибудь ждет на wh_empty?...
+    if (project.ncurrent_results >= 1)
+        project.wg_empty->notify_all();
+
+    return result;
+}

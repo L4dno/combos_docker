@@ -4,6 +4,7 @@
 #define WARM_UP_TIME 20        // Warm up time in hours
 #define MAX_SIMULATED_TIME 100 // Simulation time in hours
 #define PRECISION 0.00001      // Accuracy (used in client_work_fetch())
+#define REPLY_SIZE 10 * KB     // Reply size
 
 /* Simulation time */
 const double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600; // Total simulation time in seconds
@@ -36,3 +37,8 @@ AssignedResult *blank_result();
  * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
  */
 void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms);
+
+/*
+ *	Generate result
+ */
+AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workunit, int X);

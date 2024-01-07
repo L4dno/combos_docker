@@ -15,7 +15,8 @@ if(Boost_FOUND)
     include_directories(${SimGrid_INCLUDE_DIR})
 
     add_executable(boinc_sim_cpp boinc.cpp rand.cpp components/scheduler.cpp
-                   components/data_server.cpp components/shared.cpp)
+                   components/data_server.cpp components/shared.cpp
+                   components/data_client_server_for_cluster.cpp )
     target_link_libraries(boinc_sim_cpp ${SimGrid_LIBRARY} ${Boost_LIBRARIES})
 
 endif()
