@@ -164,7 +164,7 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
             for (int32_t i = 0; i < project.dcreplication; i++)
             {
                 server_name = project.data_clients[uniform_int(0, project.ndata_clients - 1)];
-                int server_number = atoi(server_name.c_str() + 2) - NUMBER_ORDINARY_CLIENTS;
+                int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
                 if (!SharedDatabase::_dclient_info[server_number].working.load())
                 {
                     i--;
@@ -229,8 +229,8 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
                 // BORRAR (esta mal)
                 if (i < project.dcreplication)
                 {
-                    int server_number = atoi(server_name.c_str() + 2) - NUMBER_ORDINARY_CLIENTS;
-                    // printf("resto: %d, server_number: %d\n", NUMBER_ORDINARY_CLIENTS, server_number);
+                    int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
+                    // printf("resto: %d, server_number: %d\n", g_total_number_ordinary_clients, server_number);
                     // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
                     //  BORRAR
                     // if(i==1) printf("%d\n", SharedDatabase::_dclient_info[server_number].working);

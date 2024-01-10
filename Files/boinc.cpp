@@ -54,19 +54,20 @@ XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc 
 
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400 * 365 // One year without client activity, only to finish simulation for a while
-#define WORK_FETCH_PERIOD 60           // Work fetch period
-#define CREDITS_CPU_S 0.002315         // Credits per second (1 GFLOP machine)
-#define NUMBER_PROJECTS 1		// Number of projects
-#define NUMBER_SCHEDULING_SERVERS 1	// Number of scheduling servers
-#define NUMBER_DATA_SERVERS 1		// Number of data servers
-#define NUMBER_DATA_CLIENT_SERVERS 1	// Number of data client servers
-#define NUMBER_CLIENT_GROUPS 1         // Number of client groups
-#define NUMBER_CLIENTS 1000		// Number of clients
-#define NUMBER_DATA_CLIENTS 100		// Number of data clients
-#define NUMBER_ORDINARY_CLIENTS (NUMBER_CLIENTS - NUMBER_DATA_CLIENTS)
-#define REQUEST_SIZE 10 * KB // Request size
-#define REPLY_SIZE 10 * KB   // Reply size
-#define MAX_BUFFER 300000    // Max buffer
+// #define WORK_FETCH_PERIOD 60           // Work fetch period
+// #define CREDITS_CPU_S 0.002315 // Credits per second (1 GFLOP machine)
+// #define REQUEST_SIZE 10 * KB           // Request size
+// #define REPLY_SIZE 10 * KB // Reply size
+#define MAX_BUFFER 300000 // Max buffer
+
+int g_number_projects = 1;                  // Number of projects
+int g_total_number_scheduling_servers = 1;  // Number of scheduling servers
+int g_total_number_data_servers = 1;        // Number of data servers
+int g_total_number_data_client_servers = 1; // Number of data client servers
+int g_number_client_groups = 1;             // Number of client groups
+// int g_total_number_clients = 1000;          // Number of clients
+// int g_total_number_data_clients = 100;      // Number of data clients
+// int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_data_clients);
 
 /* Project back end */
 int init_database(int argc, char *argv[]);
@@ -208,12 +209,12 @@ void print_results(int, char **)
 
     printf("\n Memory usage: %'d KB\n", memory);
 
-    printf("\n Total number of clients: %'d\n", NUMBER_CLIENTS);
-    printf(" Total number of ordinary clients: %'d\n", NUMBER_CLIENTS - NUMBER_DATA_CLIENTS);
-    printf(" Total number of data clients: %'d\n\n", NUMBER_DATA_CLIENTS);
+    printf("\n Total number of clients: %'d\n", g_total_number_clients);
+    printf(" Total number of ordinary clients: %'d\n", g_total_number_clients - g_total_number_data_clients);
+    printf(" Total number of data clients: %'d\n\n", g_total_number_data_clients);
 
     // Iterate servers information
-    for (int i = 0; i < NUMBER_PROJECTS; i++)
+    for (int i = 0; i < g_number_projects; i++)
     {
         ProjectDatabaseValue &project = SharedDatabase::_pdatabase[i]; // Server info pointer
 
@@ -1048,46 +1049,76 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
     // printf(" Execution time:\n %d days %d hours %d min %d s\n\n", days, hours, min, (int)round(t));
 
 } /* end_of_test_all */
+#include "parameters_struct_from_yaml.hpp"
+
+void init_global_parameters(const parameters::Config &config)
+{
+    // set what earlier was defined values. I'm not proud of this repetive code
+    g_number_projects = config.server_side.n_projects;
+    config.set_with_sum_scheduling_servers(g_total_number_scheduling_servers);
+    config.set_with_sum_data_servers(g_total_number_data_servers);
+    config.set_with_data_client_servers(g_total_number_data_client_servers);
+    g_number_client_groups = config.client_side.n_groups;
+    // there is no support for multiple groups
+    // todo: I start to doubt. Refs: I'm not user how SharedDatabase::_pdatabase[i].nclients is used.
+    // But for a project I don't necessarily need to know it. Let's say, I'm not sure if it
+    // is supported, so we assume it doesn't
+    g_total_number_clients = config.client_side.groups[0].n_clients;
+    g_total_number_data_clients = config.client_side.groups[0].ndata_clients;
+    g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_data_clients);
+
+    MAX_SIMULATED_TIME = config.simulation_time;
+    WARM_UP_TIME = config.warm_up_time;
+
+    double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600;
+    double maxst = (MAX_SIMULATED_TIME) * 3600;
+    double maxwt = (WARM_UP_TIME) * 3600;
+}
 
 /* Main function */
 int main(int argc, char *argv[])
 {
+
     int j;
     sg4::Engine e(&argc, argv);
     // MSG_init(&argc, argv);
 
-    if (argc != NUMBER_PROJECTS * 4 + 3)
+    if (argc != 4)
     {
-        printf("Usage: %s PLATFORM_FILE DEPLOYMENT_FILE NUMBER_CLIENTS_PROJECT1 [NUMBER_CLIENTS_PROJECT2, ..., NUMBER_CLIENTS_PROJECTN] TOTAL_NUMBER_OF_CLIENTS \n", argv[0]);
-        printf("Example: %s platform.xml deloyment.xml 1000 500 1200\n", argv[0]);
+        printf("Usage: %s PLATFORM_FILE DEPLOYMENT_FILE PARAMETERS_AS_YAML_FILE \n", argv[0]);
+        printf("Example: %s platform.xml deloyment.xml parameters.yaml\n", argv[0]);
         exit(1);
     }
+
+    auto config = parameters::read_from_file(argv[3]);
+    init_global_parameters(config);
 
     seed(clock());
 
     _total_power = 0;
     _total_available = 0;
     _total_notavailable = 0;
-    SharedDatabase::_pdatabase.resize(NUMBER_PROJECTS);
-    SharedDatabase::_sserver_info = new s_sserver_t[NUMBER_SCHEDULING_SERVERS];
-    SharedDatabase::_dserver_info = new s_dserver_t[NUMBER_DATA_SERVERS];
-    SharedDatabase::_dcserver_info = new s_dcserver_t[NUMBER_DATA_CLIENT_SERVERS];
-    SharedDatabase::_dclient_info = new s_dclient_t[NUMBER_DATA_CLIENTS];
-    SharedDatabase::_group_info = new s_group_t[NUMBER_CLIENT_GROUPS];
+    SharedDatabase::_pdatabase.resize(g_number_projects);
+    SharedDatabase::_sserver_info = new s_sserver_t[g_total_number_scheduling_servers];
+    SharedDatabase::_dserver_info = new s_dserver_t[g_total_number_data_servers];
+    SharedDatabase::_dcserver_info = new s_dcserver_t[g_total_number_data_client_servers];
+    SharedDatabase::_dclient_info = new s_dclient_t[g_total_number_data_clients];
+    SharedDatabase::_group_info = new s_group_t[g_number_client_groups];
 
-    for (int i = 0; i < NUMBER_PROJECTS; i++)
+    for (int i = 0; i < g_number_projects; i++)
     {
+        auto &project_config = config.server_side.sprojects[i];
         /* Project attributes */
 
-        SharedDatabase::_pdatabase[i].nclients = (int32_t)atoi(argv[i + 3]);
-        SharedDatabase::_pdatabase[i].ndata_clients = (int32_t)atoi(argv[i + NUMBER_PROJECTS + 3]);
+        SharedDatabase::_pdatabase[i].nclients = g_total_number_clients;
+        SharedDatabase::_pdatabase[i].ndata_clients = g_total_number_data_clients;
         SharedDatabase::_pdatabase[i].nordinary_clients = SharedDatabase::_pdatabase[i].nclients - SharedDatabase::_pdatabase[i].ndata_clients;
-        SharedDatabase::_pdatabase[i].nscheduling_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 2 + 3]);
+        SharedDatabase::_pdatabase[i].nscheduling_servers = project_config.nscheduling_servers;
         SharedDatabase::_pdatabase[i].scheduling_servers.resize((int)SharedDatabase::_pdatabase[i].nscheduling_servers);
         for (j = 0; j < SharedDatabase::_pdatabase[i].nscheduling_servers; j++)
             SharedDatabase::_pdatabase[i].scheduling_servers[j] = std::string(bprintf("s%" PRId32 "%" PRId32, i + 1, j));
 
-        SharedDatabase::_pdatabase[i].ndata_client_servers = (char)atoi(argv[i + NUMBER_PROJECTS * 3 + 3]);
+        SharedDatabase::_pdatabase[i].ndata_client_servers = project_config.ndata_client_servers;
         SharedDatabase::_pdatabase[i].data_client_servers.resize((int)SharedDatabase::_pdatabase[i].ndata_client_servers);
         for (j = 0; j < SharedDatabase::_pdatabase[i].ndata_client_servers; j++)
         {
@@ -1167,7 +1198,7 @@ int main(int argc, char *argv[])
         SharedDatabase::_pdatabase[i].barrier = sg4::Barrier::create(SharedDatabase::_pdatabase[i].nscheduling_servers + SharedDatabase::_pdatabase[i].ndata_client_servers + 4);
     }
 
-    for (j = 0; j < NUMBER_SCHEDULING_SERVERS; j++)
+    for (j = 0; j < g_total_number_scheduling_servers; j++)
     {
         SharedDatabase::_sserver_info[j].mutex = sg4::Mutex::create();
         SharedDatabase::_sserver_info[j].cond = sg4::ConditionVariable::create();
@@ -1177,7 +1208,7 @@ int main(int argc, char *argv[])
         SharedDatabase::_sserver_info[j].time_busy = 0;
     }
 
-    for (j = 0; j < NUMBER_DATA_SERVERS; j++)
+    for (j = 0; j < g_total_number_data_servers; j++)
     {
         SharedDatabase::_dserver_info[j].mutex = sg4::Mutex::create();
         SharedDatabase::_dserver_info[j].cond = sg4::ConditionVariable::create();
@@ -1187,7 +1218,7 @@ int main(int argc, char *argv[])
         SharedDatabase::_dserver_info[j].time_busy = 0;
     }
 
-    for (j = 0; j < NUMBER_DATA_CLIENT_SERVERS; j++)
+    for (j = 0; j < g_total_number_data_client_servers; j++)
     {
         SharedDatabase::_dcserver_info[j].mutex = sg4::Mutex::create();
         SharedDatabase::_dcserver_info[j].cond = sg4::ConditionVariable::create();
@@ -1197,7 +1228,7 @@ int main(int argc, char *argv[])
         SharedDatabase::_dcserver_info[j].time_busy = 0;
     }
 
-    for (j = 0; j < NUMBER_DATA_CLIENTS; j++)
+    for (j = 0; j < g_total_number_data_clients; j++)
     {
         SharedDatabase::_dclient_info[j].mutex = sg4::Mutex::create();
         SharedDatabase::_dclient_info[j].ask_for_files_mutex = sg4::Mutex::create();
@@ -1209,7 +1240,7 @@ int main(int argc, char *argv[])
         SharedDatabase::_dclient_info[j].finish = 0;
     }
 
-    for (j = 0; j < NUMBER_CLIENT_GROUPS; j++)
+    for (j = 0; j < g_number_client_groups; j++)
     {
         SharedDatabase::_group_info[j].total_power = 0;
         SharedDatabase::_group_info[j].total_available = 0;

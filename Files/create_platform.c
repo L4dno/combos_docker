@@ -67,7 +67,7 @@ int main(int argc, char *argv[]){
 	}
 
 	fprintf(fd, "\t<AS id=\"AS%d\" routing=\"None\">\n", 1);
-	fprintf(fd, "\t\t<host id=\"r0\" power=\"1\"/>\n");
+	fprintf(fd, "\t\t<host id=\"r0\" power=\"1f\"/>\n");
 	fprintf(fd, "\t</AS>\n");
 	
 	fprintf(fd, "\n");

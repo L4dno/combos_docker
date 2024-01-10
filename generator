@@ -98,27 +98,17 @@ do
 	((total_data_clients+=${ndata_clients[$i]}))
 done
 
+
+# ksenia: next I also can take from the config file
 # Compiling
 echo -n "Compiling... "
 cd Files
-line="#define NUMBER_PROJECTS ${n_projects}		\/\/ Number of projects"
-sed -i "s/^#define NUMBER_PROJECTS.*/${line}/" boinc.cpp
-line="#define NUMBER_SCHEDULING_SERVERS ${total_scheduling_servers}	\/\/ Number of scheduling servers"
-sed -i "s/^#define NUMBER_SCHEDULING_SERVERS.*/${line}/" boinc.cpp
-line="#define NUMBER_DATA_SERVERS ${total_data_servers}		\/\/ Number of data servers"
-sed -i "s/^#define NUMBER_DATA_SERVERS.*/${line}/" boinc.cpp
-line="#define NUMBER_DATA_CLIENT_SERVERS ${total_data_client_servers}	\/\/ Number of data client servers"
-sed -i "s/^#define NUMBER_DATA_CLIENT_SERVERS.*/${line}/" boinc.cpp
 line="#define MAX_SIMULATED_TIME ${simulation_time}		\/\/ Simulation time in hours"
 sed -i "s/^#define MAX_SIMULATED_TIME.*/${line}/" boinc.cpp
 line="#define WARM_UP_TIME ${warm_up_time}			\/\/ Warm up time in hours"
 sed -i "s/^#define WARM_UP_TIME.*/${line}/" boinc.cpp
 line="#define NUMBER_CLUSTERS ${n_groups}		\/\/ Number of groups"
 sed -i "s/^#define NUMBER_CLUSTERS.*/${line}/" boinc.cpp
-line="#define NUMBER_CLIENTS ${total_clients}		\/\/ Number of clients"
-sed -i "s/^#define NUMBER_CLIENTS.*/${line}/" boinc.cpp
-line="#define NUMBER_DATA_CLIENTS ${total_data_clients}		\/\/ Number of data clients"
-sed -i "s/^#define NUMBER_DATA_CLIENTS.*/${line}/" boinc.cpp
 make > /dev/null
 cd ..
 cd build 
@@ -280,8 +270,9 @@ cd ..
 echo -n "Creating execute.sh... "
 cat <<EOF >execute
 #!/bin/bash
+python3 xml2yaml.py
 cd Files
-../build/Files/boinc_sim_cpp platform.xml deployment.xml ${arg3[@]} ${arg4[@]} ${nscheduling_servers[@]} ${ndata_client_servers[@]}
+../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
 cd ..
 EOF
 

@@ -1,5 +1,15 @@
 #include "shared.hpp"
 
+int g_total_number_clients = 1000;
+int g_total_number_data_clients = 100;
+int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_data_clients);
+int MAX_SIMULATED_TIME = 100;
+int WARM_UP_TIME = 20;
+
+double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600;
+double maxst = (MAX_SIMULATED_TIME) * 3600;
+double maxwt = (WARM_UP_TIME) * 3600;
+
 ProjectDatabase SharedDatabase::_pdatabase = {};     // Initialize the static member
 sserver_t SharedDatabase::_sserver_info = nullptr;   // Scheduling servers information
 dserver_t SharedDatabase::_dserver_info = nullptr;   // Data servers information
