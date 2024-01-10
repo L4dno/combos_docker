@@ -103,12 +103,6 @@ done
 # Compiling
 echo -n "Compiling... "
 cd Files
-line="#define MAX_SIMULATED_TIME ${simulation_time}		\/\/ Simulation time in hours"
-sed -i "s/^#define MAX_SIMULATED_TIME.*/${line}/" boinc.cpp
-line="#define WARM_UP_TIME ${warm_up_time}			\/\/ Warm up time in hours"
-sed -i "s/^#define WARM_UP_TIME.*/${line}/" boinc.cpp
-line="#define NUMBER_CLUSTERS ${n_groups}		\/\/ Number of groups"
-sed -i "s/^#define NUMBER_CLUSTERS.*/${line}/" boinc.cpp
 make > /dev/null
 cd ..
 cd build 

@@ -1,0 +1,100 @@
+simulation_time: 100
+warm_up_time: 20
+server_side:
+    n_projects: 2
+    sprojects:
+      - snumber: 0
+        name: ATLAS@home
+        nscheduling_servers: 1
+        ndata_servers: 1
+        ndata_client_servers: 1
+        server_pw: 12000000000f
+        disk_bw: 167772160
+        ifgl_percentage: 100
+        ifcd_percentage: 100
+        averagewpif: 1
+        input_file_size: 57257984
+        task_fpops: 6040000000000
+        output_file_size: 104857600
+        min_quorum: 2
+        target_nresults: 2
+        max_error_results: 2
+        max_total_results: 4
+        max_success_results: 3
+        delay_bound: 1000000000
+        success_percentage: 95
+        canonical_percentage: 95
+        output_file_storage: 0
+        dsreplication: 1
+        dcreplication: 3
+      - snumber: 1
+        name: SCHOULDERS@home
+        nscheduling_servers: 1
+        ndata_servers: 1
+        ndata_client_servers: 1
+        server_pw: 12000000000f
+        disk_bw: 167772160
+        ifgl_percentage: 100
+        ifcd_percentage: 100
+        averagewpif: 1
+        input_file_size: 31457280
+        task_fpops: 40000000000
+        output_file_size: 107600
+        min_quorum: 2
+        target_nresults: 2
+        max_error_results: 2
+        max_total_results: 4
+        max_success_results: 3
+        delay_bound: 1000000
+        success_percentage: 95
+        canonical_percentage: 95
+        output_file_storage: 0
+        dsreplication: 1
+        dcreplication: 3
+client_side:
+    n_groups: 1
+    groups:
+      - n_clients: 1000
+        ndata_clients: 100
+        connection_interval: 1
+        scheduling_interval: 3600
+        gbw: 10Mbps
+        glatency: 7.3ms
+        traces_file: /Traces/lhc/unsorted
+        max_speed: 117.71
+        min_speed: 0.07
+        pv_distri: 5
+        pa_param: 0.1734
+        pb_param: -1
+        st_distri: 5
+        sa_param: 0.0001
+        sb_param: -1
+        db_distri: 5
+        da_param: 0.0001
+        db_param: -1
+        av_distri: 0
+        aa_param: 0.393
+        ab_param: 2.964
+        nv_distri: 2
+        na_param: 2.444
+        nb_param: -0.586
+        xv_distri: 0
+        xa_param: 0.393
+        xb_param: 2.964
+        yv_distri: 2
+        ya_param: 2.844
+        yb_param: -0.586
+        att_projs: 2
+        gprojects:
+          - pnumber: 0
+            priority: 1
+            lsbw: 10Gbps
+            lslatency: 50us
+            ldbw: 10Gbps
+            ldlatency: 50us
+          - pnumber: 1
+            priority: 1
+            lsbw: 10Gbps
+            lslatency: 50us
+            ldbw: 10Gbps
+            ldlatency: 50us
