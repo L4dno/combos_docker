@@ -2,13 +2,26 @@
 
 The main difference from the original repository is that the code which simulates BOINC was switched from __boinc_simulator.c__ to __boinc.cpp__. The reason: SimGrid's newest version is 3.34, when combos compiles only with 3.11. I've tried several versions as well and I've tried to play with combos + 3.11v by changing __parameters.xml__. However, it either didn't compile or failed with a segmentation fault. So, the first attempt was only to switch the file's extension and fix all compilation errors.
 
-Besides aforementioned reasons, the code in c requires a careful work with pointers. c++ provides a little bit more guarantees. At least it will shout.
+Besides the aforementioned reasons, the code in c requires a careful work with pointers. c++ provides a little bit more guarantees. At least it will shout.
 
-Apparently, the new code generates way too different results than the original version if I run them with the original __parameters.xml__. It can be that I didn't understand how the original code or xbt_structure work in some places. However, I've found several suspicious places in the old code, and I haven't checked them yet (i.e. haven't fixed them in the old version and compared results).
+Apparently, the new code generates way too different results than the original version if I run them with the original __parameters.xml__. Even after I fixed all suspicious places I'd found in the old code, nothing changed. The new version gives about 56 GFlops and the old one - about 220 GFlops in average. It looks like the problem is in simgrid and only because of the engine's work the old code produces more tasks or more frequently.
+
+At some moment I gave up and decoupled new version from the old one, what resulted in working only under c++ code and a plan to reproduce the "Validation of the simulator" section from the article about combos.
+
+To understand the code and in general be able to alter it, I've split 4000 loc into several files. __components__ is about server side and __client_side__ is about clients. (Naming could be changed). After I finish the work on another branch, there will be explanations what each component or part is about.
+
+I thought I could finally relax as I no longer saw SegFault, if there wasn't another nuance. I tried to add a new project to __parameters.xml__ and program failed once again. After all, I added __xml2yaml.py__ that converts __parameters.xml__ into __parameters.yaml__ and pass it to the program. It all works but there is advice to alter __parameters.xml__ carefully, keeping the same format of tags as it has now. To proof the correctness, I ran script that summarizes outputs of the programs' versions and calculates absolute and relative errors. The result is in __compare_results.json__. The relative errors are small (<= 7% in major) expect for "DC. Number of downloads from data server 1" but it has small values so it's okay. 
+
+# Difference with boinc
+
+- After digging in the code, I noticed the difference with boinc approach. In boinc clients first ask scheduling server to get work and after that might download files. In combos they first download and replicate all input files they need and only then scheduling server can assign tasks to clients.
+- In combos they use debt what must be depricated in the boinc. According to wiki scheduling priorities were introduced.
+- Combos is more about clusters and they even can have \[data clients\] specially for input files.
+- combos simulate only 1-cpu hosts
 
 # 'Install' section
 
-I believe it won't work as it because my files are specific for my host. I can say, that I've installed boost and simgrid. Then compile the project in __build/__ via *cmake*.
+I believe it won't work as it because my files are specific for my host. I can say, that I've installed boost and simgrid. Then compile the project in __build/__ via *cmake*. Also you need *yaml-cpp*.
 
 # Changes
 
@@ -24,11 +37,14 @@ I believe it won't work as it because my files are specific for my host. I can s
 - change work with mutex a little - there were double acquires and continues releases. Well, I'm not confident if the cases happened when it could affect anything. I'm not sure if it actually didn't affect anything.
 
 # Work yet to be done
-- I close eyes on freeing resources. They might leak a lot.
+- I close eyes on freeing resources. They might leak a lot. Better naming is also under "eventual consideration"
 - I've run valgrind many times to fix UB. ~~The last time the output wasn't clean yet, so fixes yet to be done.~~ The last time, it was clean (except leaks). Still, it's worth checking more. 
 - ~~I'm not sure about how an asynchronous communication works with a synchronous one in this project. I would like to spend time to understand it better.~~
 - there is a piece of code ```workunit->times[reply->result_number]``` in the original version. In my current understanding, a size of ```workunit->times``` correlates to ```results```, when ```reply->result_number``` is proportional to ```tasks```, so I've got ```out_of_range exception```.
 - ~~my intrusive lists are structure with ```task-s``` as members. Probably the correct way is to keep pointers ```task_t-s```.~~
+- I'm not sure that code is working with several clusters
+- When data clients ask for input files from data_client servers, one "thread" is working for each project. If there are several projects, "thread"s won't communicate and just keep asking for files while they have free space in their dedicated memory.
+- redo evaluation in a similar way as in the combos article
 
 
 ## Epilog
