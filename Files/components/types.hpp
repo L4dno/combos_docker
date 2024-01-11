@@ -92,6 +92,7 @@ struct reply
 /* Result (workunit instance) */
 struct AssignedResult
 {
+    uint32_t number;                      // Result number among all in workunit
     WorkunitT *workunit;                  // Associated workunit
     int32_t ninput_files;                 // Number of input files
     std::vector<std::string> input_files; // Input files names (URLs)
@@ -168,10 +169,11 @@ struct WorkunitT
 /* Task */
 struct TaskT
 {
-    std::string workunit; // Workunit of the task
-    std::string name;     // Task name
-    char scheduled;       // Task scheduled (it is in tasks_ready list) [0,1]
-    char running;         // Task is actually running on cpu [0,1]
+    std::string workunit;   // Workunit of the task
+    uint32_t result_number; // associated result's number among all in the workunit
+    std::string name;       // Task name
+    char scheduled;         // Task scheduled (it is in tasks_ready list) [0,1]
+    char running;           // Task is actually running on cpu [0,1]
     intrusive::list_member_hook<> tasks_hookup;
     intrusive::list_member_hook<> run_list_hookup;
     intrusive::list_member_hook<> sim_tasks_hookup;
@@ -216,7 +218,7 @@ struct ProjectInstanceOnClient
     sg4::MutexPtr tasks_ready_mutex;
     sg4::ConditionVariablePtr tasks_ready_cv_is_empty;
     std::queue<TaskT *> tasks_ready;       // synchro queue, thread to execute task */
-    TSQueue<int32_t> number_executed_task; // Queue with executed task numbers
+    TSQueue<int32_t> number_executed_task; // Queue with executed task numbers. ATTENTION: Store not task number but associated result's one
 
     TSQueue<std::string> workunit_executed_task; // Cola size tareas ejecutadas
 

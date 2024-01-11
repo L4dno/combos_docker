@@ -41,6 +41,7 @@ AssignedResult *select_result(int project_number, request_t req)
     {
         TaskT *task = new TaskT();
         task->workunit = result->workunit->number;
+        task->result_number = result->number;
         task->name = std::string(bprintf("%" PRId32, result->workunit->nsent_results++));
         task->duration = project.job_duration * ((double)req->group_power / req->power);
         task->deadline = project.delay_bound;

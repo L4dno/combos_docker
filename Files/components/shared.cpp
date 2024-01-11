@@ -71,6 +71,7 @@ AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workun
 
     // workunit->times[(int)workunit->ntotal_results++] = sg4::Engine::get_clock();
     workunit->times.push_back(sg4::Engine::get_clock());
+    result->number = workunit->ntotal_results;
     workunit->ntotal_results++;
 
     if (X == 1)

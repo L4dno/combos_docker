@@ -536,7 +536,7 @@ int validator(int argc, char *argv[])
         WorkunitT *workunit = project.current_workunits.at(reply->workunit);
         workunit->nresults_received++;
 
-        // Delay result
+        // this UB must has been solved but logging is kept just in case
         if (workunit->times.size() <= reply->result_number)
         {
             std::cout << "UB: " << workunit->times.size() << ' ' << reply->result_number << std::endl;

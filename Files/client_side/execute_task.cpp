@@ -167,7 +167,7 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
 
             number = (int32_t)atoi(task->name.c_str());
             // printf("s%d TERMINO EJECUCION DE %d en %f\n", proj->number, number, sg4::Engine::get_clock());
-            proj->number_executed_task.push(number);
+            proj->number_executed_task.push(task->result_number);
             proj->workunit_executed_task.push(task->workunit);
             proj->total_tasks_executed++;
             // printf("%f\n", proj->client->workunit_executed_task);
