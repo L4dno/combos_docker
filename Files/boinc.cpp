@@ -1070,9 +1070,9 @@ void init_global_parameters(const parameters::Config &config)
     MAX_SIMULATED_TIME = config.simulation_time;
     WARM_UP_TIME = config.warm_up_time;
 
-    double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600;
-    double maxst = (MAX_SIMULATED_TIME) * 3600;
-    double maxwt = (WARM_UP_TIME) * 3600;
+    maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600;
+    maxst = (MAX_SIMULATED_TIME) * 3600;
+    maxwt = (WARM_UP_TIME) * 3600;
 }
 
 /* Main function */
