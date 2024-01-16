@@ -132,7 +132,7 @@ int data_client_ask_for_files(ask_for_files_t params)
 
             auto where = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1)];
 
-            sg4::Mailbox::by_name(where)->put(dcsrequest, KB);
+            sg4::Mailbox::by_name(where)->put(dcsrequest, 1);
 
             dcreply = mailbox->get<dcmessage>();
 
