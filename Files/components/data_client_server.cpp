@@ -145,7 +145,7 @@ int data_client_server_dispatcher(int argc, char *argv[])
                         auto result = generate_result(project, workunit, 0);
                         {
                             std::unique_lock lock(*project.r_mutex);
-                            project.current_results.push(result);
+                            project.current_results.push_back(result);
                         }
                     }
                 }
