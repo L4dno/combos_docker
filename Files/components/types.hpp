@@ -1,5 +1,5 @@
 #pragma once
-
+#include <list>
 #include <vector>
 #include <boost/intrusive/list.hpp>
 #include "thread_safe_queue.hpp"
@@ -97,7 +97,12 @@ struct AssignedResult
     int32_t ninput_files;                 // Number of input files
     std::vector<std::string> input_files; // Input files names (URLs)
     int32_t number_tasks;                 // Number of tasks (usually one)
-    std::vector<TaskT *> tasks;           // Tasks
+    TaskT *corresponding_tasks;           // Tasks
+};
+
+struct ResultBag
+{
+    std::vector<AssignedResult *> results; // to send several results from a scheduling server
 };
 
 /* Message to data server */
@@ -346,7 +351,7 @@ struct ProjectDatabaseValue
     int64_t ncurrent_error_results;                       // Number of error results currently in the system
     int64_t ncurrent_workunits;                           // Number of current workunits
     std::map<std::string, WorkunitT *> current_workunits; // Current workunits
-    std::queue<AssignedResult *> current_results;         // Current results
+    std::list<AssignedResult *> current_results;          // Current results
     std::queue<WorkunitT *> current_error_results;        // Current error results
     sg4::MutexPtr w_mutex;                                // Workunits mutex
     sg4::MutexPtr r_mutex;                                // Results mutex

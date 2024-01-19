@@ -3,7 +3,7 @@
 
 <!-- Server side -->
 <server_side>
-	<n_projects>2</n_projects>				<!-- Number of projects -->
+	<n_projects>1</n_projects>				<!-- Number of projects -->
 	<sproject>
 		<snumber>0</snumber>				<!-- Project number -->
 		<name>ATLAS@home</name>				<!-- Project name -->
@@ -24,33 +24,6 @@
 		<max_total_results>4</max_total_results>	<!-- Max number of total results -->
 		<max_success_results>3</max_success_results>	<!-- Max number of success results -->
 		<delay_bound>1000000000</delay_bound>		<!-- Task deadline -->	
-		<success_percentage>95</success_percentage>	<!-- Percentage of success results -->
-		<canonical_percentage>95</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
-		<output_file_storage>0</output_file_storage>	<!-- Output file storage [0 -> data servers, 1 -> data clients] -->
-		<dsreplication>1</dsreplication>		<!-- Files replication in data servers -->
-		<dcreplication>3</dcreplication>		<!-- Files replication in data clients -->
-	<sproject/>
-
-	<sproject>
-		<snumber>1</snumber>				<!-- Project number -->
-		<name>SCHOULDERS@home</name>				<!-- Project name -->
-		<nscheduling_servers>1</nscheduling_servers>	<!-- Number of scheduling servers -->
-		<ndata_servers>1</ndata_servers>		<!-- Number of data servers of the project -->
-		<ndata_client_servers>1</ndata_client_servers>  <!-- Number of data client servers -->
-		<server_pw>12000000000f</server_pw>		<!-- Server power in FLOPS -->
-		<disk_bw>167772160</disk_bw>			<!-- Disk speed in bytes/sec -->
-		<ifgl_percentage>100</ifgl_percentage>           <!-- Percentage of input files generated locally -->
-		<ifcd_percentage>100</ifcd_percentage>           <!-- Percentage of times clients must download new input files (they can't use old input files) -->
-		<averagewpif>1</averagewpif>			<!-- Average number of workunits that share the same input files -->
-		<input_file_size>31457280</input_file_size>	<!-- Input file size in bytes -->
-		<task_fpops>40000000000</task_fpops>		<!-- Task duration in flops -->
-		<output_file_size>107600</output_file_size>	<!-- Answer size in bytes -->
-		<min_quorum>2</min_quorum>			<!-- Number of times a workunit must be received in order to validate it-->
-		<target_nresults>2</target_nresults>		<!-- Number of results to create initially -->
-		<max_error_results>2</max_error_results>	<!-- Max number of erroneous results -->
-		<max_total_results>4</max_total_results>	<!-- Max number of total results -->
-		<max_success_results>3</max_success_results>	<!-- Max number of success results -->
-		<delay_bound>1000000</delay_bound>		<!-- Task deadline -->	
 		<success_percentage>95</success_percentage>	<!-- Percentage of success results -->
 		<canonical_percentage>95</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
 		<output_file_storage>0</output_file_storage>	<!-- Output file storage [0 -> data servers, 1 -> data clients] -->
@@ -93,18 +66,9 @@
 		<yv_distri>2</yv_distri>			<!-- Non-availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<ya_param>2.844</ya_param>			<!-- A -->
 		<yb_param>-0.586</yb_param>			<!-- B -->
-		<att_projs>2</att_projs>			<!-- Number of projects attached -->
+		<att_projs>1</att_projs>			<!-- Number of projects attached -->
 		<gproject>
 			<pnumber>0</pnumber>			<!-- Project number -->
-			<priority>1</priority>			<!-- Project priority -->
-			<lsbw>10Gbps</lsbw>			<!-- Link bandwidth (between group and scheduling servers) -->
-			<lslatency>50us</lslatency>		<!-- Link latency (between group and scheduling servers) -->
-			<ldbw>10Gbps</ldbw>			<!-- Link bandwidth (between group and data servers) -->
-			<ldlatency>50us</latency>		<!-- Link latency (between group and data servers) -->	
-		<gproject/>	
-
-		<gproject>
-			<pnumber>1</pnumber>			<!-- Project number -->
 			<priority>1</priority>			<!-- Project priority -->
 			<lsbw>10Gbps</lsbw>			<!-- Link bandwidth (between group and scheduling servers) -->
 			<lslatency>50us</lslatency>		<!-- Link latency (between group and scheduling servers) -->

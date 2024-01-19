@@ -194,89 +194,74 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     where->put(sswork_request, REQUEST_SIZE);
 
     // Receive reply from scheduling server
-    AssignedResult *sswork_reply = sg4::Mailbox::by_name(proj->answer_mailbox)->get<AssignedResult>(); // Get work
+    ResultBag *sswork_reply_bag = sg4::Mailbox::by_name(proj->answer_mailbox)->get<ResultBag>(); // Get work
 
-    // Download input files (or generate them locally)
-    if (uniform_int(0, 99) < (int)project.ifgl_percentage)
-    {
-        // Download only if the workunit was not downloaded previously
-        if (uniform_int(0, 99) < (int)project.ifcd_percentage)
-        {
-
-            for (int32_t i = 0; i < sswork_reply->ninput_files; i++)
-            {
-                /**
-                 * ksenia: this piece of code makes me sick.
-                 * result->input_files == workunit.input_files
-                 * workunit.input_files[i] is empty when it is stored on data_client (client side)
-                 * and not empty when on data_serter (server side)
-                 * and ninput_files isn't files as I get it - but replicas.
-                 *
-                 *
-                 * so in the code below we skip if it's sotred on client side, and only do work - if on server
-                 * but in "BORRAR (esta mal)" [eng - Delete (not true)] we are working with client side
-                 *
-                 * and even the first [continue] is strange here because if above [ninput_files] are replicas
-                 * we need only one location
-                 *
-                 * I'd like to check that my understanding is correct before rewritting
-                 */
-                if (sswork_reply->input_files[i].empty())
-                    continue;
-
-                server_name = sswork_reply->input_files[i];
-
-                // BORRAR (esta mal)
-                if (i < project.dcreplication)
-                {
-                    int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
-                    // printf("resto: %d, server_number: %d\n", g_total_number_ordinary_clients, server_number);
-                    // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
-                    //  BORRAR
-                    // if(i==1) printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
-                    if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
-                        continue;
-                }
-
-                dsinput_file_request = new s_dsmessage_t();
-                dsinput_file_request->type = REQUEST;
-                dsinput_file_request->proj_number = proj->number;
-                dsinput_file_request->answer_mailbox = proj->answer_mailbox;
-
-                sg4::Mailbox::by_name(server_name)->put(dsinput_file_request, KB);
-
-                // error = MSG_task_receive_with_timeout(&dsinput_file_reply_task, proj->answer_mailbox, backoff);		// Send input file reply
-                dsinput_file_reply_task = sg4::Mailbox::by_name(proj->answer_mailbox)->get<s_dsmessage_t>();
-
-                // Log request
-                project.rfiles_mutex->lock();
-                project.rfiles[i]++;
-                project.rfiles_mutex->unlock();
-
-                break;
-            }
-        }
-    }
-
-    if (sswork_reply->number_tasks == 0)
+    if (sswork_reply_bag->results.size() == 0)
         proj->on = 0;
 
-    // Insert received tasks in tasks swag
-    for (int32_t i = 0; i < (int32_t)sswork_reply->number_tasks; i++)
+    // todo: i can make requests asynchronous and don't wait for responses
+    for (auto &sswork_reply : sswork_reply_bag->results)
     {
-        TaskT *t = sswork_reply->tasks[i];
+
+        // Download input files (or generate them locally)
+        if (uniform_int(0, 99) < (int)project.ifgl_percentage)
+        {
+            // Download only if the workunit was not downloaded previously
+            if (uniform_int(0, 99) < (int)project.ifcd_percentage)
+            {
+
+                for (int32_t i = 0; i < sswork_reply->ninput_files; i++)
+                {
+                    if (sswork_reply->input_files[i].empty())
+                        continue;
+
+                    server_name = sswork_reply->input_files[i];
+
+                    // BORRAR (esta mal)
+                    if (i < project.dcreplication)
+                    {
+                        int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
+                        // printf("resto: %d, server_number: %d\n", g_total_number_ordinary_clients, server_number);
+                        // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
+                        //  BORRAR
+                        // if(i==1) printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
+                        if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
+                            continue;
+                    }
+
+                    dsinput_file_request = new s_dsmessage_t();
+                    dsinput_file_request->type = REQUEST;
+                    dsinput_file_request->proj_number = proj->number;
+                    dsinput_file_request->answer_mailbox = proj->answer_mailbox;
+
+                    sg4::Mailbox::by_name(server_name)->put(dsinput_file_request, KB);
+
+                    // error = MSG_task_receive_with_timeout(&dsinput_file_reply_task, proj->answer_mailbox, backoff);		// Send input file reply
+                    dsinput_file_reply_task = sg4::Mailbox::by_name(proj->answer_mailbox)->get<s_dsmessage_t>();
+
+                    // Log request
+                    project.rfiles_mutex->lock();
+                    project.rfiles[i]++;
+                    project.rfiles_mutex->unlock();
+
+                    break;
+                }
+            }
+        }
+
+        // Insert received tasks in tasks swag
+        TaskT *t = sswork_reply->corresponding_tasks;
         t->msg_task = simgrid::s4u::Exec::init();
         t->msg_task->set_name(t->name);
         t->msg_task->set_flops_amount(t->duration);
         t->project = proj;
         proj->tasks_swag.push_back(*t);
+
+        // Increase the total number of tasks received
+        proj->total_tasks_received++;
     }
-
-    // Increase the total number of tasks received
-    proj->total_tasks_received = proj->total_tasks_received + sswork_reply->number_tasks;
-
     // Free
-    delete (sswork_reply);
+    delete (sswork_reply_bag);
 
     // Signal main client process
     client->on = 0;

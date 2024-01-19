@@ -1,7 +1,7 @@
 simulation_time: 100
 warm_up_time: 20
 server_side:
-    n_projects: 2
+    n_projects: 1
     sprojects:
       - snumber: 0
         name: ATLAS@home
@@ -22,30 +22,6 @@ server_side:
         max_total_results: 4
         max_success_results: 3
         delay_bound: 1000000000
-        success_percentage: 95
-        canonical_percentage: 95
-        output_file_storage: 0
-        dsreplication: 1
-        dcreplication: 3
-      - snumber: 1
-        name: SCHOULDERS@home
-        nscheduling_servers: 1
-        ndata_servers: 1
-        ndata_client_servers: 1
-        server_pw: 12000000000f
-        disk_bw: 167772160
-        ifgl_percentage: 100
-        ifcd_percentage: 100
-        averagewpif: 1
-        input_file_size: 31457280
-        task_fpops: 40000000000
-        output_file_size: 107600
-        min_quorum: 2
-        target_nresults: 2
-        max_error_results: 2
-        max_total_results: 4
-        max_success_results: 3
-        delay_bound: 1000000
         success_percentage: 95
         canonical_percentage: 95
         output_file_storage: 0
@@ -84,15 +60,9 @@ client_side:
         yv_distri: 2
         ya_param: 2.844
         yb_param: -0.586
-        att_projs: 2
+        att_projs: 1
         gprojects:
           - pnumber: 0
-            priority: 1
-            lsbw: 10Gbps
-            lslatency: 50us
-            ldbw: 10Gbps
-            ldlatency: 50us
-          - pnumber: 1
             priority: 1
             lsbw: 10Gbps
             lslatency: 50us

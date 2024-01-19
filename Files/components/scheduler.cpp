@@ -14,46 +14,67 @@ namespace sg4 = simgrid::s4u;
 /*
  *	Select result from database
  */
-AssignedResult *select_result(int project_number, request_t req)
+std::vector<AssignedResult *> select_result(int project_number, request_t req)
 {
 
     ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number];
 
-    // Get result
-    AssignedResult *result = project.current_results.front();
-    project.current_results.pop();
+    std::vector<AssignedResult *> bag_of_result;
+    double sum_work = 0;
+    double single_result_add_work = (double)project.job_duration / req->power;
+    std::set<std::string> unique_workunits;
+    std::list<AssignedResult *>::iterator current_results_it = project.current_results.begin();
 
-    // Signal work generator if number of current results is 0
-    project.ncurrent_results--;
-    if (project.ncurrent_results == 0)
-        project.wg_full->notify_all();
-
-    // Calculate number of tasks
-    result->number_tasks = (int32_t)floor(req->percentage / ((double)project.job_duration / req->power));
-    if (result->number_tasks == 0)
-        result->number_tasks = (int32_t)1;
-
-    // Create tasks
-    result->tasks.resize((int)result->number_tasks);
-
-    // Fill tasks
-    for (int i = 0; i < result->number_tasks; i++)
+    while (sum_work + single_result_add_work < req->percentage || sum_work == 0)
     {
+
+        // Get result
+        AssignedResult *result = nullptr;
+        for (; current_results_it != project.current_results.end(); ++current_results_it)
+        {
+            if (unique_workunits.count((*current_results_it)->workunit->number) == 0)
+            {
+                break;
+            }
+        }
+        result = *current_results_it;
+        auto next_it = current_results_it;
+        next_it++;
+        project.current_results.erase(current_results_it);
+        current_results_it = next_it;
+
+        if (result == nullptr)
+        {
+            project.wg_full->notify_all();
+            break;
+        }
+
+        // Signal work generator if number of current results is 0
+        project.ncurrent_results--;
+        if (project.ncurrent_results == 0)
+        {
+            project.wg_full->notify_all();
+        }
+
+        sum_work += single_result_add_work;
+
+        // Create task
         TaskT *task = new TaskT();
         task->workunit = result->workunit->number;
-        task->result_number = result->number;
         task->name = std::string(bprintf("%" PRId32, result->workunit->nsent_results++));
         task->duration = project.job_duration * ((double)req->group_power / req->power);
         task->deadline = project.delay_bound;
         task->start = sg4::Engine::get_clock();
-        result->tasks[i] = task;
+        result->corresponding_tasks = task;
+
+        unique_workunits.insert(task->workunit);
+        bag_of_result.push_back(result);
+
+        project.ssdmutex->lock();
+        project.nresults_sent++;
+        project.ssdmutex->unlock();
     }
-
-    project.ssdmutex->lock();
-    project.nresults_sent++;
-    project.ssdmutex->unlock();
-
-    return result;
+    return bag_of_result;
 }
 
 /*
@@ -137,7 +158,7 @@ int scheduling_server_requests(int argc, char *argv[])
 int scheduling_server_dispatcher(int argc, char *argv[])
 {
     dsmessage_t work = nullptr;           // Termination message
-    AssignedResult *result = nullptr;     // Data server answer
+    std::vector<AssignedResult *> result; // Data server answer
     simgrid::s4u::CommPtr comm = nullptr; // Asynchronous communication
     sserver_t sserver_info = nullptr;     // Scheduling server info
     int32_t i, project_number;            // Index, project number
@@ -210,7 +231,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             if (project.ncurrent_results == 0)
             {
                 // NO WORKUNITS
-                result = blank_result();
+                result = {blank_result()};
             }
             else
             {
@@ -224,7 +245,14 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             auto caller_reply_mailbox = ((request_t)msg->content)->answer_mailbox;
             auto ans_mailbox = sg4::Mailbox::by_name(caller_reply_mailbox);
 
-            comm = ans_mailbox->put_async(result, KB * result->ninput_files);
+            ResultBag *msg_pack = new ResultBag{.results = result};
+            int msg_sz = 0;
+            for (auto &task : result)
+            {
+                msg_sz += KB * task->ninput_files;
+            }
+
+            comm = ans_mailbox->put_async(msg_pack, msg_sz);
 
             // Store the asynchronous communication created in the dictionary
 
@@ -254,7 +282,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
         // Free
         delete msg;
         msg = nullptr;
-        result = nullptr;
+        result.clear();
     }
 
     // Wait until all scheduling servers finish

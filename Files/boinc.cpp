@@ -467,7 +467,7 @@ int work_generator(int argc, char *argv[])
                 // Generate new instance from the workunit
                 project.r_mutex->lock();
                 auto result = generate_result(project, workunit, 1);
-                project.current_results.push(result);
+                project.current_results.push_back(result);
                 project.r_mutex->unlock();
 
                 project.er_mutex->lock();
