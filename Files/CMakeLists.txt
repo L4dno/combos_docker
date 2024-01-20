@@ -28,3 +28,6 @@ if(Boost_FOUND)
     target_link_libraries(boinc_sim_cpp ${SimGrid_LIBRARY} ${Boost_LIBRARIES} yaml-cpp)
 
 endif()
+
+add_executable(create_deployment create_deployment.cpp rand.cpp)
+add_executable(create_platform create_platform.cpp rand.cpp)
