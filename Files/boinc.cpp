@@ -816,6 +816,21 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
 }
 
 /*****************************************************************************/
+#include <boost/algorithm/string.hpp>
+std::vector<double> get_distribution_parameter(char *argument)
+{
+    std::string str = argument;
+    std::vector<std::string> tokens;
+
+    boost::split(tokens, str, boost::is_any_of(","));
+    std::vector<double> result;
+    result.reserve(tokens.size());
+    for (auto token : tokens)
+    {
+        result.push_back(atof(token.data()));
+    }
+    return result;
+}
 
 static client_t client_new(int argc, char *argv[])
 {
@@ -840,17 +855,17 @@ static client_t client_new(int argc, char *argv[])
         SharedDatabase::_group_info[group_number].max_power = atof(argv[index++]);
         SharedDatabase::_group_info[group_number].min_power = atof(argv[index++]);
         SharedDatabase::_group_info[group_number].sp_distri = (char)atoi(argv[index++]);
-        SharedDatabase::_group_info[group_number].sa_param = atof(argv[index++]);
-        SharedDatabase::_group_info[group_number].sb_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].sa_param = get_distribution_parameter(argv[index++]);
+        SharedDatabase::_group_info[group_number].sb_param = get_distribution_parameter(argv[index++]);
         SharedDatabase::_group_info[group_number].db_distri = (char)atoi(argv[index++]);
-        SharedDatabase::_group_info[group_number].da_param = atof(argv[index++]);
-        SharedDatabase::_group_info[group_number].db_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].da_param = get_distribution_parameter(argv[index++]);
+        SharedDatabase::_group_info[group_number].db_param = get_distribution_parameter(argv[index++]);
         SharedDatabase::_group_info[group_number].av_distri = (char)atoi(argv[index++]);
-        SharedDatabase::_group_info[group_number].aa_param = atof(argv[index++]);
-        SharedDatabase::_group_info[group_number].ab_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].aa_param = get_distribution_parameter(argv[index++]);
+        SharedDatabase::_group_info[group_number].ab_param = get_distribution_parameter(argv[index++]);
         SharedDatabase::_group_info[group_number].nv_distri = (char)atoi(argv[index++]);
-        SharedDatabase::_group_info[group_number].na_param = atof(argv[index++]);
-        SharedDatabase::_group_info[group_number].nb_param = atof(argv[index++]);
+        SharedDatabase::_group_info[group_number].na_param = get_distribution_parameter(argv[index++]);
+        SharedDatabase::_group_info[group_number].nb_param = get_distribution_parameter(argv[index++]);
         if ((argc - 20) % 3 != 0)
         {
             aux = atof(argv[index++]);

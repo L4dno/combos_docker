@@ -500,16 +500,16 @@ struct client_group
     double total_notavailable;      // Total time clients not available
     double connection_interval;
     double scheduling_interval;
-    double sa_param;  // Speed A parameter
-    double sb_param;  // Speed B parameter
-    double da_param;  // Disk speed A parameter
-    double db_param;  // Disk speed B parameter
-    double aa_param;  // Availability A parameter
-    double ab_param;  // Availability B parameter
-    double na_param;  // Non availability A parameter
-    double nb_param;  // Non availability B parameter
-    double max_power; // Maximum host power
-    double min_power; // Minimum host power
+    std::vector<double> sa_param; // Speed A parameter
+    std::vector<double> sb_param; // Speed B parameter
+    std::vector<double> da_param; // Disk speed A parameter
+    std::vector<double> db_param; // Disk speed B parameter
+    std::vector<double> aa_param; // Availability A parameter
+    std::vector<double> ab_param; // Availability B parameter
+    std::vector<double> na_param; // Non availability A parameter
+    std::vector<double> nb_param; // Non availability B parameter
+    double max_power;             // Maximum host power
+    double min_power;             // Minimum host power
 };
 
 /* Data client ask for files */
