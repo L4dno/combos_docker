@@ -102,9 +102,6 @@ done
 # ksenia: next I also can take from the config file
 # Compiling
 echo -n "Compiling... "
-cd Files
-make > /dev/null
-cd ..
 cd build 
 make > /dev/null
 cd ..
@@ -167,8 +164,8 @@ done
 echo -n "Creating platform.xml... "
 
 ##### Platform ######
-cd Files
-./create_platform ${arg1[@]}
+cd build/Files
+PROJECT_SOURCE_DIR="/home/ksenia/vsc/mirror_combos" ./create_platform ${arg1[@]}
 
 echo "Done"
 
@@ -239,10 +236,10 @@ done
 ##### Deployment ######
 
 echo -n "Creating deployment.xml... "
-./create_deployment ${arg2[@]}
+PROJECT_SOURCE_DIR="/home/ksenia/vsc/mirror_combos" ./create_deployment ${arg2[@]}
 echo "Done"
 
-cd ..
+cd ../..
 
 # boinc_simulator arguments 
 for ((i=0, k=0, l=0; i<n_groups; i++))
