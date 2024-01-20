@@ -14,7 +14,7 @@ I thought I could finally relax as I no longer saw SegFault, if there wasn't ano
 
 # Difference with boinc
 
-- After digging in the code, I noticed the difference with boinc approach. In boinc clients first ask scheduling server to get work and after that might download files. In combos they first download and replicate all input files they need and only then scheduling server can assign tasks to clients.
+- After digging in the code, I noticed the difference with boinc approach. In boinc clients first ask scheduling server to get work and after that might download files. In combos they first download and replicate all input files they need and only then scheduling server can assign tasks to clients. Upd: or the same. somewhere I saw that boinc described the same logic
 - In combos they use debt what must be depricated in the boinc. According to wiki scheduling priorities were introduced.
 - Combos is more about clusters and they even can have \[data clients\] specially for input files.
 - combos simulate only 1-cpu hosts
