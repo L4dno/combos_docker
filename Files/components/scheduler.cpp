@@ -12,6 +12,20 @@
 namespace sg4 = simgrid::s4u;
 
 /*
+ *	Blank result
+ */
+AssignedResult *blank_result()
+{
+    AssignedResult *result = new AssignedResult();
+    result->workunit = NULL;  // Associated workunit
+    result->ninput_files = 0; // Number of input files
+    // result->input_files.clear(); // Input files names (URLs)
+    result->number_tasks = 0; // Number of tasks (usually one)
+    // result->tasks;            // Tasks
+    return result;
+}
+
+/*
  *	Select result from database
  */
 std::vector<AssignedResult *> select_result(int project_number, request_t req)
@@ -231,7 +245,8 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             if (project.ncurrent_results == 0)
             {
                 // NO WORKUNITS
-                result = {blank_result()};
+                // result = blank_result();
+                result = {};
             }
             else
             {

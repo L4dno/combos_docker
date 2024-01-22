@@ -40,11 +40,6 @@ public:
 void compute_server(int flops);
 
 /*
- *	Blank result
- */
-AssignedResult *blank_result();
-
-/*
  * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
  */
 void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms);

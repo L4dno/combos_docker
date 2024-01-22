@@ -26,20 +26,6 @@ void compute_server(int flops)
 }
 
 /*
- *	Blank result
- */
-AssignedResult *blank_result()
-{
-    AssignedResult *result = new AssignedResult();
-    result->workunit = NULL;  // Associated workunit
-    result->ninput_files = 0; // Number of input files
-    // result->input_files.clear(); // Input files names (URLs)
-    result->number_tasks = 0; // Number of tasks (usually one)
-    // result->tasks;            // Tasks
-    return result;
-}
-
-/*
  * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
  */
 void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)

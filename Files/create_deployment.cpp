@@ -39,7 +39,8 @@ int main(int argc, char *argv[])
 	int64_t index = 1;
 	FILE *fd;
 	std::string result_file = "deployment.xml";
-	if (const char *env_p = std::getenv("PROJECT_SOURCE_DIR"))
+	const char *env_p;
+	if (env_p = std::getenv("PROJECT_SOURCE_DIR"))
 	{
 		result_file = std::string(env_p) + "/Files/" + result_file;
 	}
@@ -215,11 +216,9 @@ int main(int argc, char *argv[])
 		int n_clients = atoi(argv[index++]);
 		int ndata_clients = atoi(argv[index++]);
 		int att_projs = atoi(argv[index++]);
-		char *traces_file = reinterpret_cast<char *>(calloc(strlen(argv[index]) + 4, 1));
-		strcpy(traces_file, "../");
-		strcat(traces_file, argv[index++]);
-		FILE *fd_traces = fopen(traces_file, "r");
-		free(traces_file);
+		std::string traces_file = std::string(env_p).size() == 0 ? std::string("../") : std::string(env_p);
+		traces_file += std::string(argv[index++]);
+		FILE *fd_traces = fopen(traces_file.c_str(), "r");
 
 		for (j = 0; j < n_clients - ndata_clients; j++)
 		{
