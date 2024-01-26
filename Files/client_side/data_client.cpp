@@ -1,6 +1,9 @@
 /**
- * @attention in overall, I understand it, but if I'm not mistaken, this code is buggy
- * I'd like to correct it with documentation from boinc
+ * @brief
+ * - data_client_ask_for_files: works all the time, asking for workunits if have memory
+ * and asks for input file fom data server
+ * - data_client_requests: simulates periods of inavailabilty and available, call dispatcher in the end of period
+ * - data_client_dispatcher: simulates disk access to input and output files
  */
 
 #include "data_client.hpp"
@@ -35,25 +38,8 @@ static sg4::MutexPtr _dclient_mutex = sg4::Mutex::create(); // Data client mutex
 int data_client_ask_for_files(ask_for_files_t params)
 {
 
-    std::string server_name;
-    // msg_error_t error;
     simgrid::s4u::CommPtr comm = NULL; // Asynchronous communication
-    // double backoff = 300;
-
-    // Request to data client server
-    dcsmessage_t dcsrequest = NULL; // Message to data client server
-
-    // Reply from data client server
-    dcmessage_t dcreply = NULL;
-
-    // Request to data server
-    dsmessage_t dsinput_file_request = NULL;
-
-    // Reply from data server
-    int *dsinput_file_reply_task = nullptr;
-
-    // Reply to data client server
-    dcsmessage_t dcsreply = NULL;
+                                       // double backoff = 300;
 
     // group_t group_info = NULL;			// Group information
     dclient_t dclient_info = NULL;         // Data client information
@@ -67,7 +53,7 @@ int data_client_ask_for_files(ask_for_files_t params)
     // todo: doesn't we need it? So?
     // group_info = params->group_info;
     dclient_info = params->dclient_info;
-    sg4::Mailbox *mailbox = sg4::Mailbox::by_name(params->mailbox);
+    sg4::Mailbox *self_mailbox = sg4::Mailbox::by_name(params->mailbox);
 
     max_storage = storage = (project_priority / dclient_info->sum_priority) * dclient_info->total_storage * KB * KB;
 
@@ -81,7 +67,6 @@ int data_client_ask_for_files(ask_for_files_t params)
     }
 
     project.dcmutex->lock();
-    // ksenia: not understand logic behind this initalization
     for (i = 0; i < project.ndata_clients; i++)
     {
         if (project.data_clients[i].empty())
@@ -92,7 +77,7 @@ int data_client_ask_for_files(ask_for_files_t params)
     }
     project.dcmutex->unlock();
 
-    while (1)
+    while (sg4::Engine::get_clock() < maxtt)
     {
         dclient_info->ask_for_files_mutex->lock();
         if (dclient_info->finish)
@@ -124,17 +109,17 @@ int data_client_ask_for_files(ask_for_files_t params)
             // backoff = 300;
 
             // ASK FOR WORKUNITS -> DATA CLIENT SERVER
-            dcsrequest = new s_dcsmessage_t();
+            dcsmessage_t dcsrequest = new s_dcsmessage_t();
             dcsrequest->type = REQUEST;
             dcsrequest->content = new s_dcsrequest_t();
             dcsrequest->datatype = dcsmessage_content::SDcsrequestT;
-            ((dcsrequest_t)dcsrequest->content)->answer_mailbox = mailbox->get_name();
+            ((dcsrequest_t)dcsrequest->content)->answer_mailbox = self_mailbox->get_name();
 
-            auto where = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1)];
+            auto data_client_server_mailbox = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1)];
 
-            sg4::Mailbox::by_name(where)->put(dcsrequest, 1);
+            sg4::Mailbox::by_name(data_client_server_mailbox)->put(dcsrequest, 1);
 
-            dcreply = mailbox->get<dcmessage>();
+            dcmessage_t dcreply = self_mailbox->get<dcmessage>();
 
             if (dcreply->nworkunits > 0)
             {
@@ -154,47 +139,34 @@ int data_client_ask_for_files(ask_for_files_t params)
                             {
 
                                 /**
-                                 * ksenia: this piece of code makes me sick.
-                                 * result->input_files == workunit.input_files
-                                 * workunit.input_files[i] is empty when it is stored on data_client (client side)
-                                 * and not empty when on data_serter (server side)
-                                 * and ninput_files isn't files as I get it - but replicas.
-                                 *
-                                 *
-                                 * so in the code below we skip if it's sotred on client side, and only do work - if on server
-                                 * but in "BORRAR (esta mal)" [eng - Delete (not true)] we are working with client side
-                                 *
-                                 * and even the first [continue] is strange here because if above [ninput_files] are replicas
-                                 * we need only one location
-                                 *
-                                 * I'd like to check that my understanding is correct before rewritting
+                                 * below we try to get file from data_server or data_client if there is
+                                 * one with replica. First we go throw data_client and at last fall into data_server
                                  */
 
                                 if (workunit->input_files[i].empty())
                                     continue;
 
-                                server_name = workunit->input_files[i];
+                                std::string server_with_data = workunit->input_files[i];
 
-                                // BORRAR (esta mal, no generico)
+                                // check if we are look at data_client's replica and data client is available
+                                // if not - go further
+                                // BORRAR (esta mal, no generico) (as I understood, it's about part of [server_number]
+                                //          or about that if first need to query server to really understand if they work
+                                //          or about order that first [project.dcreplication] are from data_client
                                 if (i < project.dcreplication)
                                 {
-                                    int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
-                                    // printf("resto: %d, server_name: %s, server_number: %d\n", g_total_number_ordinary_clients, server_name.c_str(), server_number);
-                                    // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
-                                    // ksenia: seems like checking that our server is working? and if not then lost workunit
+                                    int server_number = atoi(server_with_data.c_str() + 2) - g_total_number_ordinary_clients;
                                     if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
                                         continue;
                                 }
 
-                                dsinput_file_request = new s_dsmessage_t();
+                                dsmessage_t dsinput_file_request = new s_dsmessage_t();
                                 dsinput_file_request->type = REQUEST;
-                                dsinput_file_request->answer_mailbox = mailbox->get_name();
+                                dsinput_file_request->answer_mailbox = self_mailbox->get_name();
 
-                                server_name = workunit->input_files[i];
+                                sg4::Mailbox::by_name(server_with_data)->put(dsinput_file_request, KB);
 
-                                sg4::Mailbox::by_name(server_name)->put(dsinput_file_request, KB);
-
-                                dsinput_file_reply_task = mailbox->get<int>();
+                                int *dsinput_file_reply_task = self_mailbox->get<int>();
 
                                 // Timeout reached -> exponential backoff 2^N
                                 /*if(error == MSG_TIMEOUT){
@@ -221,7 +193,7 @@ int data_client_ask_for_files(ask_for_files_t params)
                 }
 
                 // CONFIRMATION MESSAGE TO DATA CLIENT SERVER
-                dcsreply = new s_dcsmessage_t();
+                dcsmessage_t dcsreply = new s_dcsmessage_t();
                 dcsreply->type = REPLY;
                 dcsreply->content = new s_dcsreply_t();
                 dcsreply->datatype = dcsmessage_content::SDcsreplyT;
@@ -248,18 +220,8 @@ int data_client_ask_for_files(ask_for_files_t params)
     // Finish data client servers execution
     _dclient_mutex->lock();
     project.nfinished_dclients++;
-    if (project.nfinished_dclients == project.ndata_clients)
-    {
-        for (i = 0; i < project.ndata_client_servers; i++)
-        {
-            dcsrequest = new s_dcsmessage_t();
-            dcsrequest->type = TERMINATION;
 
-            sg4::Mailbox::by_name(project.data_client_servers[i])->put(dcsrequest, REQUEST_SIZE);
-        }
-    }
     _dclient_mutex->unlock();
-    // mailbox.~Mailbox();
     return 0;
 }
 
@@ -268,12 +230,11 @@ int data_client_ask_for_files(ask_for_files_t params)
  */
 int data_client_requests(int argc, char *argv[])
 {
-    dsmessage_t msg = NULL;                      // Client message
     group_t group_info = NULL;                   // Group information
     dclient_t dclient_info = NULL;               // Data client information
     ask_for_files_t ask_for_files_params = NULL; // Ask for files params
     int32_t data_client_number, group_number;    // Data client number, group number
-    int count = 0;                               // Index, termination count
+    int terminated_projects_count = 0;           // Index, termination count
 
     // Availability params
     double time = 0, random;
@@ -307,6 +268,7 @@ int data_client_requests(int argc, char *argv[])
     // Create ask for files processes (1 per attached project)
     dclient_info->nprojects = atoi(group_info->proj_args[0]);
     dclient_info->sum_priority = 0;
+
     for (int i = 0; i < dclient_info->nprojects; i++)
         dclient_info->sum_priority += (double)atof(group_info->proj_args[i * 3 + 3]);
     for (int i = 0; i < dclient_info->nprojects; i++)
@@ -321,7 +283,7 @@ int data_client_requests(int argc, char *argv[])
         sg4::Actor::create("ask_for_files_thread", sg4::this_actor::get_host(), data_client_ask_for_files, ask_for_files_params);
     }
 
-    sg4::Mailbox *mailbox = sg4::Mailbox::by_name(dclient_info->server_name);
+    sg4::Mailbox *self_mailbox = sg4::Mailbox::by_name(dclient_info->server_name);
 
     while (1)
     {
@@ -350,14 +312,15 @@ int data_client_requests(int argc, char *argv[])
         }
 
         // Receive message
-        msg = mailbox->get<dsmessage>();
+        dsmessage_t msg = self_mailbox->get<dsmessage>();
 
         // Termination message
         if (msg->type == TERMINATION)
         {
             delete (msg);
-            count++;
-            if (count == dclient_info->nprojects)
+
+            terminated_projects_count++;
+            if (terminated_projects_count == dclient_info->nprojects)
                 break;
             msg = NULL;
             continue;
@@ -471,6 +434,7 @@ int data_client_dispatcher(int argc, char *argv[])
         if (t0 < maxtt && t0 >= maxwt)
             dclient_info->time_busy += (t1 - t0);
     }
+    simgrid::s4u::Comm::wait_all(_dscomm);
 
     dclient_info->ask_for_files_mutex->lock();
     dclient_info->finish = 1;

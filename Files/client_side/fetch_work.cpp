@@ -8,6 +8,19 @@
 #include "components/shared.hpp"
 #include "rand.h"
 
+/**
+ * @brief straightforward
+ * - client_update_shortfall - estimates requested work
+ * - client_ask_for_work - for a project sends all calculated results, get new tasks, simulates getting input data
+ * - client_work_fetch - finds suitable project, simulates unavailability and call [client_ask_for_work]
+ *
+ * @ref to real boinc
+ * It's different from a real policy.
+ * According to wiki: https://github.com/BOINC/boinc/wiki/ClientSched#work-fetch-policy
+ *
+ * for instance, here we calculate debt + shortfall, but in the documents - scheduling priority.
+ */
+
 /*****************************************************************************/
 /* update shortfall(amount of work needed to keep 1 cpu busy during next ConnectionInterval) of client */
 static void client_update_shortfall(client_t client)
@@ -91,15 +104,6 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     // msg_error_t error;				// Sending result
     // double backoff = 300;				// 1 minute initial backoff
 
-    // Data server input file request
-    dsmessage_t dsinput_file_reply_task = NULL; // Input file reply task from data server
-    dsmessage_t dsinput_file_request = NULL;    // Input file request message
-
-    // Data server output file reply
-    dsmessage_t dsoutput_file = NULL; // Output file message
-
-    std::string server_name; // Store data server name
-
     ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)proj->number]; // Boinc server info pointer
 
     // Check if there are executed results
@@ -140,21 +144,20 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
         // Create execution results task
 
         // Send message to the server
-        auto &server_nm_ml = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
-        auto where = sg4::Mailbox::by_name(server_nm_ml);
+        auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
 
-        where->put(ssexecution_results, REPLY_SIZE);
+        sg4::Mailbox::by_name(scheduling_server_mailbox)->put(ssexecution_results, REPLY_SIZE);
 
         if (project.output_file_storage == 0)
         {
             // Upload output files to data servers
             for (int32_t i = 0; i < project.dsreplication; i++)
             {
-                dsoutput_file = new s_dsmessage_t();
+                dsmessage_t dsoutput_file = new s_dsmessage_t();
                 dsoutput_file->type = REPLY;
-                auto where = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
+                auto data_server_mailbox = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
 
-                sg4::Mailbox::by_name(where)->put(dsoutput_file, project.output_file_size);
+                sg4::Mailbox::by_name(data_server_mailbox)->put(dsoutput_file, project.output_file_size);
             }
         }
         else
@@ -163,17 +166,17 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
 
             for (int32_t i = 0; i < project.dcreplication; i++)
             {
-                server_name = project.data_clients[uniform_int(0, project.ndata_clients - 1)];
-                int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
-                if (!SharedDatabase::_dclient_info[server_number].working.load())
+                std::string data_client_name = project.data_clients[uniform_int(0, project.ndata_clients - 1)];
+                int data_client_number = atoi(data_client_name.c_str() + 2) - g_total_number_ordinary_clients;
+                if (!SharedDatabase::_dclient_info[data_client_number].working.load())
                 {
                     i--;
                     continue;
                 }
 
-                dsoutput_file = new s_dsmessage_t();
+                dsmessage_t dsoutput_file = new s_dsmessage_t();
                 dsoutput_file->type = REPLY;
-                sg4::Mailbox::by_name(server_name)->put(dsoutput_file, project.output_file_size);
+                sg4::Mailbox::by_name(data_client_name)->put(dsoutput_file, project.output_file_size);
             }
         }
     }
@@ -188,19 +191,18 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     ((request_t)sswork_request->content)->power = client->power;
     ((request_t)sswork_request->content)->percentage = percentage;
 
-    auto &serve_nm_ml = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
+    auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
 
-    auto where = sg4::Mailbox::by_name(serve_nm_ml);
-    where->put(sswork_request, REQUEST_SIZE);
+    sg4::Mailbox::by_name(scheduling_server_mailbox)->put(sswork_request, REQUEST_SIZE);
 
     // Receive reply from scheduling server
-    ResultBag *sswork_reply_bag = sg4::Mailbox::by_name(proj->answer_mailbox)->get<ResultBag>(); // Get work
+    ResultBag *results_to_execute = sg4::Mailbox::by_name(proj->answer_mailbox)->get<ResultBag>(); // Get work
 
-    if (sswork_reply_bag->results.size() == 0)
+    if (results_to_execute->results.size() == 0)
         proj->on = 0;
 
     // todo: i can make requests asynchronous and don't wait for responses
-    for (auto &sswork_reply : sswork_reply_bag->results)
+    for (auto &sswork_reply : results_to_execute->results)
     {
 
         // Download input files (or generate them locally)
@@ -215,12 +217,12 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
                     if (sswork_reply->input_files[i].empty())
                         continue;
 
-                    server_name = sswork_reply->input_files[i];
+                    std::string server_with_data = sswork_reply->input_files[i];
 
                     // BORRAR (esta mal)
                     if (i < project.dcreplication)
                     {
-                        int server_number = atoi(server_name.c_str() + 2) - g_total_number_ordinary_clients;
+                        int server_number = atoi(server_with_data.c_str() + 2) - g_total_number_ordinary_clients;
                         // printf("resto: %d, server_number: %d\n", g_total_number_ordinary_clients, server_number);
                         // printf("%d\n", SharedDatabase::_dclient_info[server_number].working);
                         //  BORRAR
@@ -229,15 +231,15 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
                             continue;
                     }
 
-                    dsinput_file_request = new s_dsmessage_t();
+                    dsmessage_t dsinput_file_request = new s_dsmessage_t();
                     dsinput_file_request->type = REQUEST;
                     dsinput_file_request->proj_number = proj->number;
                     dsinput_file_request->answer_mailbox = proj->answer_mailbox;
 
-                    sg4::Mailbox::by_name(server_name)->put(dsinput_file_request, KB);
+                    sg4::Mailbox::by_name(server_with_data)->put(dsinput_file_request, KB);
 
                     // error = MSG_task_receive_with_timeout(&dsinput_file_reply_task, proj->answer_mailbox, backoff);		// Send input file reply
-                    dsinput_file_reply_task = sg4::Mailbox::by_name(proj->answer_mailbox)->get<s_dsmessage_t>();
+                    dsmessage_t dsinput_file_reply_task = sg4::Mailbox::by_name(proj->answer_mailbox)->get<s_dsmessage_t>();
 
                     // Log request
                     project.rfiles_mutex->lock();
@@ -261,7 +263,7 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
         proj->total_tasks_received++;
     }
     // Free
-    delete (sswork_reply_bag);
+    delete (results_to_execute);
 
     // Signal main client process
     client->on = 0;

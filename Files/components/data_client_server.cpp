@@ -1,5 +1,10 @@
 /**
- * @attention the point of variation for the research
+ * @brief
+ * takes client's request which is
+ * - request: assigns workunits to client
+ * - reply: assigns where to get input files and marks
+ *          data client as confirmed data from request part.
+ *          if all replicas confirm - creates results for workunits
  */
 
 #include "data_client_server.hpp"

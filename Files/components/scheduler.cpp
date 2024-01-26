@@ -7,7 +7,15 @@
 
 #include "types.hpp"
 #include "shared.hpp"
-// typedef struct ssmessage s_ssmessage_t, *ssmessage_t; // Message to data server
+
+/**
+ * @brief
+ * takes client's request which is
+ * - reply: send to validator results of computantions that present in msg->content
+ * - request: send computations to client: take [result] item from [project.current_results]
+ *            and create [result->number_tasks] tasks for it, with [workunit] equals to
+ *            [result->workunit->number]
+ */
 
 namespace sg4 = simgrid::s4u;
 
@@ -115,11 +123,11 @@ int scheduling_server_requests(int argc, char *argv[])
     // Wait until database is ready
     project.barrier->wait();
 
-    sg4::Mailbox *mailbox = sg4::Mailbox::by_name(sserver_info->server_name);
+    sg4::Mailbox *self_mailbox = sg4::Mailbox::by_name(sserver_info->server_name);
     while (1)
     {
         // Receive message
-        auto msg = mailbox->get<SchedulingServerMessage>();
+        auto msg = self_mailbox->get<SchedulingServerMessage>();
 
         // Termination message
         if (msg->type == TERMINATION)
@@ -331,6 +339,8 @@ int scheduling_server_dispatcher(int argc, char *argv[])
         project.v_empty->notify_all();
         project.a_empty->notify_all();
     }
+
+    simgrid::s4u::Comm::wait_all(_sscomm);
 
     return 0;
 }

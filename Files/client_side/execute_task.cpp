@@ -3,11 +3,18 @@
  *  https://boinc.berkeley.edu/trac/wiki/ClientSchedOld
  *
  * @brief
- * - client_execute_tasks: only takes task from queue, execute it and update debts (see common.hpp)
+ * - client_execute_tasks: only takes task from queue, execute it and update debts
  * - client_update_simulate_finish_time, client_update_deadline_missed - the names are speaking
- * - schedule_job: suspend carrent task (project) and run a new task from the args
+ * - schedule_job: suspend current task (project) and run a new task from the args
  * - client_cpu_scheduling: call schedule_job with task that can miss deadline, otherwise with greatest debt
- * - client_main_loop: simulate times of avalability and unavailability
+ * - client_main_loop: simulate times of availability and unavailability
+ *
+ * @ref
+ * It's different from a real policy.
+ * According to wiki: https://github.com/BOINC/boinc/wiki/ClientSched#work-fetch-policy
+ * and https://github.com/BOINC/boinc/wiki/JobPrioritization
+ *
+ * for instance, here we calculate debt, but in the documents - scheduling priority
  */
 #include "execute_task.hpp"
 #include <iostream>

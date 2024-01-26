@@ -299,6 +299,28 @@ void print_results()
     fflush(stdout);
 }
 
+void server_side_termination()
+{
+    for (auto &pdatabase : SharedDatabase::_pdatabase)
+    {
+        for (int i = 0; i < pdatabase.nscheduling_servers; i++)
+        {
+            SchedulingServerMessage *msg = new SchedulingServerMessage();
+            msg->type = TERMINATION;
+            auto ser_n_mb = pdatabase.scheduling_servers[i];
+            sg4::Mailbox::by_name(ser_n_mb)->put(msg, 1);
+        }
+
+        for (int i = 0; i < pdatabase.ndata_client_servers; i++)
+        {
+            dcsmessage *msg = new dcsmessage();
+            msg->type = TERMINATION;
+            auto ser_n_mb = pdatabase.data_client_servers[i];
+            sg4::Mailbox::by_name(ser_n_mb)->put(msg, 1);
+        }
+    }
+}
+
 /*
  *	Init database
  */
@@ -916,6 +938,8 @@ static client_t client_new(int argc, char *argv[])
     return client;
 }
 
+int g_terminated_clients_cnt = 0;
+
 // Main client function
 int client(int argc, char *argv[])
 {
@@ -968,13 +992,6 @@ int client(int argc, char *argv[])
         //  Send finishing message to project_database
         if (SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients == SharedDatabase::_pdatabase[(int)proj->number].nordinary_clients)
         {
-            for (int i = 0; i < SharedDatabase::_pdatabase[(int)proj->number].nscheduling_servers; i++)
-            {
-                SchedulingServerMessage *msg = new SchedulingServerMessage();
-                msg->type = TERMINATION;
-                auto ser_n_mb = SharedDatabase::_pdatabase[(int)proj->number].scheduling_servers[i];
-                sg4::Mailbox::by_name(ser_n_mb)->put(msg, 1);
-            }
             for (int i = 0; i < SharedDatabase::_pdatabase[(int)proj->number].ndata_clients; i++)
             {
                 msg2 = new s_dsmessage_t();
@@ -986,6 +1003,13 @@ int client(int argc, char *argv[])
         }
     }
     _oclient_mutex->unlock();
+
+    // last client sends termination messages to the server side.
+    g_terminated_clients_cnt++;
+    if (g_terminated_clients_cnt == g_total_number_ordinary_clients)
+    {
+        server_side_termination();
+    }
 
     delete (client);
 

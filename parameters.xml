@@ -48,10 +48,7 @@
 		<pv_distri>5</pv_distri>			<!-- Speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<pa_param>0.1734</pa_param>			<!-- A -->
 		<pb_param>-1</pb_param>				<!-- B -->
-		<st_distri>5</st_distri>			<!-- Disk storage distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
-		<sa_param>0.0001</sa_param>			<!-- A -->
-		<sb_param>-1</sb_param>				<!-- B -->
-		<db_distri>5</db_distri>			<!-- Disk speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
+		<db_distri>5</db_distri>			<!-- Disk storage distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<da_param>0.0001</da_param>			<!-- A -->
 		<db_param>-1</db_param>				<!-- B -->
 		<av_distri>0</av_distri>			<!-- Availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
@@ -60,12 +57,6 @@
 		<nv_distri>2</nv_distri>			<!-- Non-availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<na_param>2.444</na_param>			<!-- A -->
 		<nb_param>-0.586</nb_param>			<!-- B -->
-		<xv_distri>0</xv_distri>			<!-- Availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
-		<xa_param>0.393</xa_param>			<!-- A -->
-		<xb_param>2.964</xb_param>			<!-- B -->
-		<yv_distri>2</yv_distri>			<!-- Non-availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
-		<ya_param>2.844</ya_param>			<!-- A -->
-		<yb_param>-0.586</yb_param>			<!-- B -->
 		<att_projs>1</att_projs>			<!-- Number of projects attached -->
 		<gproject>
 			<pnumber>0</pnumber>			<!-- Project number -->

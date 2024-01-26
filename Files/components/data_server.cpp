@@ -7,6 +7,13 @@
 #include "types.hpp"
 #include "shared.hpp"
 
+/**
+ * @brief
+ * takes client's request which is
+ * - reply: simulate disk access to output files
+ * - request: simulate disk access to input files and answer the client's request
+ */
+
 /*
  *	Disk access simulation
  */
@@ -29,10 +36,6 @@ void disk_access(int32_t server_number, int64_t size)
  */
 int data_server_requests(int argc, char *argv[])
 {
-    dserver_t dserver_info = NULL;
-    dsmessage_t req = NULL;
-    int32_t server_number;
-
     // Check number of arguments
     if (argc != 2)
     {
@@ -41,16 +44,16 @@ int data_server_requests(int argc, char *argv[])
     }
 
     // Init parameters
-    server_number = (int32_t)atoi(argv[1]);                              // Data server number
-    dserver_info = &SharedDatabase::_dserver_info[server_number];        // Data server info pointer
-    dserver_info->server_name = sg4::this_actor::get_host()->get_name(); // Data server name
+    int32_t server_number = (int32_t)atoi(argv[1]);                         // Data server number
+    dserver_t dserver_info = &SharedDatabase::_dserver_info[server_number]; // Data server info pointer
+    dserver_info->server_name = sg4::this_actor::get_host()->get_name();    // Data server name
 
-    sg4::Mailbox *mailbox = sg4::Mailbox::by_name(dserver_info->server_name);
+    sg4::Mailbox *self_mailbox = sg4::Mailbox::by_name(dserver_info->server_name);
 
     while (1)
     {
         // Receive message
-        req = mailbox->get<dsmessage>();
+        dsmessage_t req = self_mailbox->get<dsmessage>();
 
         // Termination message
         if (req->type == TERMINATION)
@@ -88,7 +91,6 @@ int data_server_requests(int argc, char *argv[])
 int data_server_dispatcher(int argc, char *argv[])
 {
     dserver_t dserver_info = NULL;
-    dsmessage_t req = NULL;
     simgrid::s4u::CommPtr comm = NULL; // Asynch communication
     int32_t server_number, project_number;
     double t0, t1;
@@ -132,7 +134,7 @@ int data_server_dispatcher(int argc, char *argv[])
         compute_server(20);
 
         // Pop client message
-        req = dserver_info->client_requests.front();
+        dsmessage_t req = dserver_info->client_requests.front();
         dserver_info->client_requests.pop();
         dserver_info->Nqueue--;
         lock.unlock();
@@ -171,6 +173,8 @@ int data_server_dispatcher(int argc, char *argv[])
         delete req;
         req = NULL;
     }
+
+    simgrid::s4u::Comm::wait_all(_dscomm);
 
     return 0;
 }
