@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
 	fprintf(fd, "<!DOCTYPE platform SYSTEM \"http://simgrid.gforge.inria.fr/simgrid.dtd\">\n");
 	fprintf(fd, "<platform version=\"3\">\n");
 
-	fprintf(fd, "   <process host=\"r0\" function=\"print_results\" />");
+	fprintf(fd, "   <process host=\"r0\" function=\"show_progress\" />");
 	fprintf(fd, "\n");
 
 	n_projects = atoi(argv[index++]);

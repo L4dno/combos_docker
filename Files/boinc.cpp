@@ -184,15 +184,15 @@ static inline void loadBar(int x, int n, int r, int w)
 /*
  *	Print server results
  */
-void print_results(int, char **)
+int g_memory = 0; // memory usage
+
+void show_progress(int, char **)
 {
-    int memory = 0; // memory usage
-    int memoryAux;  // memory aux
-    double sleep;   // Sleep time
+    int memoryAux; // memory aux
+    double sleep;  // Sleep time
 
     // Init variables
-    int k = 0, l = 0, m = 0;
-    sleep = maxtt / 100.0; // 1 hour
+    sleep = maxtt / 3600.0; // 1 hour
 
     // Print progress
     for (int progress = 0; ceil(sg4::Engine::get_clock()) < maxtt;)
@@ -200,14 +200,20 @@ void print_results(int, char **)
         progress = (int)round(sg4::Engine::get_clock() / maxtt * 100) + 1;
         loadBar((int)round(progress), 100, 200, 50);
         memoryAux = memoryUsage();
-        if (memoryAux > memory)
-            memory = memoryAux;
+        if (memoryAux > g_memory)
+            g_memory = memoryAux;
         sg4::this_actor::sleep_for(sleep); // Sleep while simulation
     }
+}
+
+void print_results()
+{
+    // Init variables
+    int k = 0, l = 0, m = 0;
 
     setlocale(LC_NUMERIC, "en_US.UTF-8");
 
-    printf("\n Memory usage: %'d KB\n", memory);
+    printf("\n Memory usage: %'d KB\n", g_memory);
 
     printf("\n Total number of clients: %'d\n", g_total_number_clients);
     printf(" Total number of ordinary clients: %'d\n", g_total_number_clients - g_total_number_data_clients);
@@ -1007,8 +1013,9 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
         /*  Simulation setting */
         e.load_platform(platform_file);
 
-        // e.on_simulation_end_cb?
-        e.register_function("print_results", &print_results);
+        e.on_simulation_end_cb(print_results);
+
+        e.register_function("show_progress", show_progress);
         e.register_function("init_database", init_database);
         e.register_function("work_generator", work_generator);
         e.register_function("validator", validator);
