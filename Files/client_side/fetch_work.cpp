@@ -43,11 +43,15 @@ static void client_update_shortfall(client_t client)
             // printf("SHORTFALL(1) %g   %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
             client->no_actions = 0;
         }
-        for (auto &task : proj->run_list)
         {
-            total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
-            client->no_actions = 0;
-            // printf("SHORTFALL(2) %g  %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
+            std::unique_lock lock(*proj->run_list_mutex);
+
+            for (auto &task : proj->run_list)
+            {
+                total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
+                client->no_actions = 0;
+                // printf("SHORTFALL(2) %g  %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
+            }
         }
         total_time += total_time_proj;
         /* amount of work needed - total already loaded */

@@ -59,6 +59,11 @@ std::vector<AssignedResult *> select_result(int project_number, request_t req)
                 break;
             }
         }
+        if (current_results_it == project.current_results.end())
+        {
+            project.wg_full->notify_all();
+            break;
+        }
         result = *current_results_it;
         auto next_it = current_results_it;
         next_it++;

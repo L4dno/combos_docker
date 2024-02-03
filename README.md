@@ -47,6 +47,17 @@ I believe it won't work as it because my files are specific for my host. I can s
 - When data clients ask for input files from data_client servers, one "thread" is working for each project. If there are several projects, "thread"s won't communicate and just keep asking for files while they have free space in their dedicated memory.
 - redo evaluation in a similar way as in the combos article
 
+# Warning
+If you set up several projects and get in the end
+```bash
+[c1320:Project1:c1320
+:(2033) 7200.000000] ./src/kernel/actor/ActorImpl.cpp:263: [root/CRITICAL] Gasp! This exception may be lost by subsequent calls.
+Backtrace (displayed in actor Project1:c1320
+```
+then congratulations, you stuck with the same problem as me. It appears with specific projects setting,
+estimated flops in particular. If you decrease this parameter for one of the project, it actually can solve
+problem, but I don't know the reason and how to eliminate it. If you have thoughts please share them.
+
 
 ## Epilog
 Scheme that helps me to understand what's going on:

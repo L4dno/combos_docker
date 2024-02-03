@@ -118,8 +118,11 @@ void free_task(TaskT *task)
 
     task->project->client->deadline_missed.erase(task);
 
-    if (task->run_list_hookup.is_linked())
-        xbt::intrusive_erase(task->project->run_list, *task);
+    {
+        std::unique_lock lock(*task->project->run_list_mutex);
+        if (task->run_list_hookup.is_linked())
+            xbt::intrusive_erase(task->project->run_list, *task);
+    }
 
     if (task->sim_tasks_hookup.is_linked())
         xbt::intrusive_erase(task->project->sim_tasks, *task);
@@ -127,7 +130,7 @@ void free_task(TaskT *task)
     if (task->tasks_hookup.is_linked())
         xbt::intrusive_erase(task->project->tasks_swag, *task);
 
-    delete task;
+    // delete task;
 }
 
 /*****************************************************************************/
@@ -140,7 +143,7 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
     // printf("Running thread to execute tasks from project %s in %s  %g\n", proj->name, 			MSG_host_get_name(MSG_host_self()),  MSG_get_host_speed(MSG_host_self()));
 
     /* loop, execute tasks from queue until they finish or are cancelled by the main thread */
-    while (1)
+    while (sg4::Engine::get_clock() < maxtt)
     {
         std::unique_lock task_ready_lock(*proj->tasks_ready_mutex);
         while (proj->tasks_ready.empty())
@@ -163,14 +166,16 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
 
         // t0 = sg4::Engine::get_clock();
 
+        auto msg_task = task->msg_task;
+
         // error_t err = MSG_task_execute(task->msg_task);
-        task->msg_task->set_host(sg4::this_actor::get_host());
-        task->msg_task->start();
+        msg_task->set_host(sg4::this_actor::get_host());
+        msg_task->start();
 
         // if (err == MSG_OK)
         try
         {
-            task->msg_task->wait();
+            msg_task->wait();
 
             number = (int32_t)atoi(task->name.c_str());
             // printf("s%d TERMINO EJECUCION DE %d en %f\n", proj->number, number, sg4::Engine::get_clock());
@@ -190,6 +195,7 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
 
             proj->running_task = NULL;
             free_task(task);
+            delete task;
 
             proj->client->on = 1;
             proj->client->sched_cond->notify_all();
@@ -200,9 +206,9 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
         }
 
         // printf("%f: ---(2)--------Task(%s)(%p) from project(%s) error finished  duration = %g   power=  %g\n", sg4::Engine::get_clock(), task->name, task, proj->name, task->msg_task->get_remaining(), sg4::this_actor::get_host()->get_speed());
-        task->running = 0;
+        // task->running = 0;
         proj->running_task = NULL;
-        free_task(task);
+        // free_task(task);
         continue;
     }
 
@@ -239,6 +245,8 @@ static int task_deadline_missed_sim(client_t client, ProjectInstanceOnClient *pr
 
 static void client_update_simulate_finish_time(client_t client)
 {
+    std::vector<std::unique_lock<simgrid::s4u::Mutex>> locks_inprojects;
+
     int total_tasks = 0;
     double clock_sim = sg4::Engine::get_clock();
     int64_t power = client->power;
@@ -246,6 +254,7 @@ static void client_update_simulate_finish_time(client_t client)
 
     for (auto &[key, proj] : projects)
     {
+        locks_inprojects.push_back(std::unique_lock{*proj->run_list_mutex});
         total_tasks += proj->tasks_swag.size() + proj->run_list.size();
 
         for (auto &task : proj->tasks_swag)
@@ -328,6 +337,7 @@ static void client_update_deadline_missed(client_t client)
                 // printf("((((((((((((((  HEAP PUSH      1   heap index %d\n", task->heap_index);
             }
         }
+        std::unique_lock lock(*proj->run_list_mutex);
         for (auto &task : proj->run_list)
         {
             client->deadline_missed.erase(&task);
@@ -423,6 +433,7 @@ static void client_cpu_scheduling(client_t client)
 
             client_update_debt(client);      // FELIX
             client_clean_short_debt(client); // FELIX
+            task->msg_task->cancel();
             free_task(task);
 
             continue;
@@ -434,7 +445,8 @@ static void client_cpu_scheduling(client_t client)
         if (task->tasks_hookup.is_linked())
             xbt::intrusive_erase(task->project->tasks_swag, *task);
 
-        task->project->run_list.push_back(*task);
+        if (!task->run_list_hookup.is_linked())
+            task->project->run_list.push_back(*task);
 
         /* keep the task in deadline heap */
         client->deadline_missed.insert(task);
@@ -481,6 +493,7 @@ static void client_cpu_scheduling(client_t client)
             if (deadline_missed(task))
             {
                 // printf(">>>>>>>>>>>> Task-2(%s)(%p) from project(%s) deadline, skip it\n", task->name, task, task->project->name);
+                task->msg_task->cancel();
                 free_task(task);
                 continue;
             }

@@ -219,7 +219,9 @@ struct ProjectInstanceOnClient
     client_t client;        // Client pointer
     TaskSwagT tasks_swag;   // nearly runnable jobs of project, insert at tail to keep ordered
     SimTaskSwagT sim_tasks; // nearly runnable jobs of project, insert at tail to keep ordered
-    RunListSwagT run_list;  // list of jobs running, normally only one tasks, but if a deadline may occur it can put another here
+    sg4::MutexPtr run_list_mutex;
+
+    RunListSwagT run_list; // list of jobs running, normally only one tasks, but if a deadline may occur it can put another here
     sg4::MutexPtr tasks_ready_mutex;
     sg4::ConditionVariablePtr tasks_ready_cv_is_empty;
     std::queue<TaskT *> tasks_ready;       // synchro queue, thread to execute task */

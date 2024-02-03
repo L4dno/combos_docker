@@ -231,7 +231,7 @@ void print_results()
         double ocload = 0, dcload = 0;
         for (int j = 0; j < project.dsreplication + project.dcreplication; j++)
         {
-            printf("  OC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, project.rfiles[j]);
+            printf("  OC. Number of downloads from data server %d: %" PRId64 "\n", j, project.rfiles[j]);
             if (j >= project.dcreplication)
                 ocload += project.rfiles[j];
         }
@@ -240,7 +240,7 @@ void print_results()
 
         for (int j = 0; j < project.dsreplication + project.dcreplication; j++)
         {
-            printf("  DC. Number of downloads from data server %" PRId64 ": %" PRId64 "\n", j, project.dcrfiles[j]);
+            printf("  DC. Number of downloads from data server %d: %" PRId64 "\n", j, project.dcrfiles[j]);
             if (j >= project.dcreplication)
                 dcload += project.dcrfiles[j];
         }
@@ -249,9 +249,9 @@ void print_results()
 
         printf("\n");
         for (int j = 0; j < (int64_t)project.nscheduling_servers; j++, l++)
-            printf("  Scheduling server %" PRId64 " Busy: %0.1f%%\n", j, SharedDatabase::_sserver_info[l].time_busy / maxst * 100);
+            printf("  Scheduling server %d Busy: %0.1f%%\n", j, SharedDatabase::_sserver_info[l].time_busy / maxst * 100);
         for (int j = 0; j < (int64_t)project.ndata_servers; j++, k++)
-            printf("  Data server %" PRId64 " Busy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, SharedDatabase::_dserver_info[k].time_busy / maxst * 100, (ocload * project.input_file_size + project.dsuploads * project.output_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst), (dcload * project.input_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst));
+            printf("  Data server %d Busy: %0.1f%% (OC: %0.1f%%, DC: %0.1f%%)\n", j, SharedDatabase::_dserver_info[k].time_busy / maxst * 100, (ocload * project.input_file_size + project.dsuploads * project.output_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst), (dcload * project.input_file_size) / ((ocload + dcload) * project.input_file_size + project.dsuploads * project.output_file_size) * 100 * (SharedDatabase::_dserver_info[k].time_busy / maxst));
         printf("\n  Number of clients: %'d\n", project.nclients);
         printf("  Number of ordinary clients: %'d\n", project.nordinary_clients);
         printf("  Number of data clients: %'d\n\n", project.ndata_clients);
@@ -339,7 +339,7 @@ int init_database(int argc, char *argv[])
 
     // Init database
     project.project_number = project_number;               // Project number
-    project.project_name = std::string(argv[2]);           // Project name
+    project.project_name = argv[2];                        // Project name
     project.output_file_size = (int64_t)atoll(argv[3]);    // Answer size
     project.job_duration = (int64_t)atoll(argv[4]);        // Workunit duration
     project.ifgl_percentage = (char)atoi(argv[5]);         // Percentage of input files generated locally
@@ -800,6 +800,8 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
         proj->number_executed_task;   // Queue with task's numbers
         proj->workunit_executed_task; // Queue with task's sizes
 
+        proj->run_list_mutex = sg4::Mutex::create();
+
         proj->tasks_ready_mutex = sg4::Mutex::create();
         proj->tasks_ready_cv_is_empty = sg4::ConditionVariable::create();
 
@@ -1001,7 +1003,10 @@ int client(int argc, char *argv[])
     _oclient_mutex->lock();
     for (auto &[key, proj] : client->projects)
     {
-        proj->thread->kill();
+        if (proj->thread)
+        {
+            proj->thread->kill();
+        }
         SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients++;
         // printf("%s, Num_clients: %d, Total_clients: %d\n", client->name, num_clients[proj->number], nclients[proj->number]);
         //  Send finishing message to project_database
