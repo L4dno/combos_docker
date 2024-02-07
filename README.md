@@ -58,6 +58,21 @@ then congratulations, you stuck with the same problem as me. It appears with spe
 estimated flops in particular. If you decrease this parameter for one of the project, it actually can solve
 problem, but I don't know the reason and how to eliminate it. If you have thoughts please share them.
 
+A workaround for this problem is to find the line with "Gasp! This exception may be lost by subsequent calls." in your installation of simgrid, comment it and rebuild the library. In the future more normal workaround can be implemented when we first print results and then finish the simulation.
+
+# Explanations of some parts:
+1. task flops:
+why do we have 
+
+```task->duration = project.job_duration * ((double)req->group_power / req->power); (1)```
+
+and
+
+```(task.msg_task->get_remaining() * client->factor) / power; (2)```
+
+In platform.xml we set up a clients' cluster where hosts have speed of 1Gf. This speed is used for execution tasks 
+via SimGrid. Instead of setting different speed to hosts, we adjust amount of computation (1). When we need to calculate
+time left for the task, we eliminate this affect by multiplying by client->factor as in (2).
 
 ## Epilog
 Scheme that helps me to understand what's going on:

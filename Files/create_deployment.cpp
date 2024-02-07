@@ -219,6 +219,14 @@ int main(int argc, char *argv[])
 		std::string traces_file = std::string(env_p).size() == 0 ? std::string("../") : std::string(env_p);
 		traces_file += std::string(argv[index++]);
 		FILE *fd_traces = fopen(traces_file.c_str(), "r");
+		if (fd_traces != NULL)
+		{
+			std::cout << "use file for cpu power: " << traces_file << std::endl;
+		}
+		else
+		{
+			perror("use distribution for cpu power");
+		}
 
 		for (j = 0; j < n_clients - ndata_clients; j++)
 		{

@@ -185,8 +185,6 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
             // printf("%f\n", proj->client->workunit_executed_task);
             // t1 = sg4::Engine::get_clock();
 
-            // printf("-----(3)------Task(%s)(%s) from project(%s) finished, le queda %g --   cuanto  %g  %g %d\n", task->name, task, proj->name, MSG_task_get_remaining_computation(task->msg_task), t1-t0 ,sg4::Engine::get_clock());
-
             task->running = 0;
             proj->wall_cpu_time += sg4::Engine::get_clock() - proj->client->last_wall;
             proj->client->last_wall = sg4::Engine::get_clock();
@@ -205,7 +203,6 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
         {
         }
 
-        // printf("%f: ---(2)--------Task(%s)(%p) from project(%s) error finished  duration = %g   power=  %g\n", sg4::Engine::get_clock(), task->name, task, proj->name, task->msg_task->get_remaining(), sg4::this_actor::get_host()->get_speed());
         // task->running = 0;
         proj->running_task = NULL;
         // free_task(task);
@@ -390,7 +387,7 @@ static void schedule_job(client_t client, TaskT *job)
     {
         double remains;
         TaskT *task_temp = job->project->running_task;
-        remains = task_temp->msg_task->get_remaining() * client->factor;
+        remains = task_temp->msg_task->get_remaining();
         task_temp->msg_task->cancel();
         task_temp->msg_task = sg4::Exec::init();
         task_temp->msg_task->set_name(task_temp->name);
