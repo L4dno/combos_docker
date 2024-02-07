@@ -187,7 +187,7 @@ struct TaskT
     int64_t heap_index;               // (maximum 2⁶³-1)
     int64_t deadline;                 // Task deadline (maximum 2⁶³-1)
     double duration;                  // Task duration in flops
-    double start;
+    double sent_time;
     double sim_finish; // Simulated finish time of task
     double sim_remains;
     // double comp_cost; // Task flops to execute. Can be less than duration if it was halt.
@@ -249,7 +249,7 @@ struct TaskCmp
 {
     bool operator()(const TaskT *a, const TaskT *b) const
     {
-        return a->start + a->deadline > b->start + b->deadline;
+        return a->sent_time + a->deadline > b->sent_time + b->deadline;
     }
 };
 

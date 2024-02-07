@@ -91,8 +91,10 @@ std::vector<AssignedResult *> select_result(int project_number, request_t req)
         task->name = std::string(bprintf("%" PRId32, result->workunit->nsent_results++));
         task->duration = project.job_duration * ((double)req->group_power / req->power);
         task->deadline = project.delay_bound;
-        task->start = sg4::Engine::get_clock();
+        task->sent_time = sg4::Engine::get_clock();
         result->corresponding_tasks = task;
+        // set sent time instead of creation time here
+        result->workunit->times[result->number] = task->sent_time;
 
         unique_workunits.insert(task->workunit);
         bag_of_result.push_back(result);

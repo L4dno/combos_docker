@@ -225,7 +225,7 @@ static int deadline_missed(TaskT *task)
     power = task->project->client->power;
     remains = task->msg_task->get_remaining() * task->project->client->factor;
     /* we're simulating only one cpu per host */
-    if (sg4::Engine::get_clock() + (remains / power) > task->start + task->deadline)
+    if (sg4::Engine::get_clock() + (remains / power) > task->sent_time + task->deadline)
     {
         // printf("power: %ld\n", power);
         // printf("remains: %f\n", remains);
@@ -237,7 +237,7 @@ static int deadline_missed(TaskT *task)
 /* simulate task scheduling and verify if it will miss its deadline */
 static int task_deadline_missed_sim(client_t client, ProjectInstanceOnClient *proj, TaskT *task)
 {
-    return task->sim_finish > (task->start + task->deadline - SharedDatabase::_group_info[client->group_number].scheduling_interval) * 0.9;
+    return task->sim_finish > (task->sent_time + task->deadline - SharedDatabase::_group_info[client->group_number].scheduling_interval) * 0.9;
 }
 
 static void client_update_simulate_finish_time(client_t client)

@@ -65,49 +65,8 @@ static void client_update_shortfall(client_t client)
         client->total_shortfall = 0;
 }
 
-/*
- *	Client ask for work:
- *
- *	- Request work to scheduling_server
- *	- Download input files from data server
- *	- Send execution results to scheduling_server
- *	- Upload output files to data server
- */
-static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, double percentage)
+static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
 {
-    /*
-
-    WORK REQUEST NEEDS:
-
-        - type: REQUEST
-        - content: request_t
-        - content->answer_mailbox: Client mailbox
-        - content->group_power: Group power
-        - content->power: Host power
-        - content->percentage: Percentage of project (in relation to all projects)
-
-    INPUT FILE REQUEST NEEDS:
-
-        - type: REQUEST
-        - answer_mailbox: Client mailbox
-
-    EXECUTION RESULTS REPLY NEEDS:
-
-        - type: REPLY
-        - content: reply_t
-        - content->result_number: executed result number
-        - content->workunit: associated workunit
-        - content->credits: number of credits to request
-
-    OUTPUT FILE REPLY NEEDS:
-
-        - type: REPLY
-
-    */
-
-    // msg_error_t error;				// Sending result
-    // double backoff = 300;				// 1 minute initial backoff
-
     ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)proj->number]; // Boinc server info pointer
 
     // Check if there are executed results
@@ -184,6 +143,51 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
             }
         }
     }
+}
+
+/*
+ *	Client ask for work:
+ *
+ *	- Request work to scheduling_server
+ *	- Download input files from data server
+ *	- Send execution results to scheduling_server
+ *	- Upload output files to data server
+ */
+static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, double percentage)
+{
+    /*
+
+    WORK REQUEST NEEDS:
+
+        - type: REQUEST
+        - content: request_t
+        - content->answer_mailbox: Client mailbox
+        - content->group_power: Group power
+        - content->power: Host power
+        - content->percentage: Percentage of project (in relation to all projects)
+
+    INPUT FILE REQUEST NEEDS:
+
+        - type: REQUEST
+        - answer_mailbox: Client mailbox
+
+    EXECUTION RESULTS REPLY NEEDS:
+
+        - type: REPLY
+        - content: reply_t
+        - content->result_number: executed result number
+        - content->workunit: associated workunit
+        - content->credits: number of credits to request
+
+    OUTPUT FILE REPLY NEEDS:
+
+        - type: REPLY
+
+    */
+    ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)proj->number]; // Boinc server info pointer
+
+    // msg_error_t error;				// Sending result
+    // double backoff = 300;				// 1 minute initial backoff
 
     // Request work
     SchedulingServerMessage *sswork_request = new SchedulingServerMessage();
@@ -284,6 +288,10 @@ int client_work_fetch(client_t client)
     static char first = 1;
     double work_percentage = 0;
     double control, sleep;
+    // if scheduling server doesn't have results to send, we shut down project and never ever ask for work, even if it generated
+    // todo: i need to check with documents, but for now we test it once in a time
+    double project_testing_period = 3 * WORK_FETCH_PERIOD;
+    double next_project_testing_period = project_testing_period;
 
     sg4::this_actor::sleep_for(maxwt);
     sg4::this_actor::sleep_for(uniform_ab(0, 3600));
@@ -320,9 +328,22 @@ int client_work_fetch(client_t client)
 
         client_update_shortfall(client);
 
+        // turn on projects
+        if (sg4::Engine::get_clock() >= next_project_testing_period)
+        {
+            next_project_testing_period += project_testing_period;
+            for (auto &[key, proj] : projects)
+            {
+                proj->on = 1;
+            }
+        }
+
         ProjectInstanceOnClient *selected_proj = nullptr;
         for (auto &[key, proj] : projects)
         {
+            // todo: in the real system i saw results sent once they're done. If it's not true then i need to find more precious politics
+            send_finished_work(client, proj);
+
             /* if there are no running tasks so we can download from all projects. Don't waste processing time */
             // if (client->running_project != NULL && client->running_project->running_task && proj->long_debt < -_group_power[client->group_number].scheduling_interval) {
             // printf("Shortfall %s: %f\n", proj->name, proj->shortfall);

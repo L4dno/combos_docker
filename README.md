@@ -36,6 +36,8 @@ I believe it won't work as it because my files are specific for my host. I can s
 - add ```number_past_through_assimilator``` field in ```workunit```. Sorry, not sure about correctness of the naming. I had a workunit had been deleted before validator or assimilator finished to work with them. In the old code it was UB.
 - change work with mutex a little - there were double acquires and continues releases. Well, I'm not confident if the cases happened when it could affect anything. I'm not sure if it actually didn't affect anything.
 - there were problems with system (deadlocks or exceptions) when simulation finished. Now it has to be fixed.
+- tasks' deadlines wer calculated as delay_bound + creation time, not delay_bound + sent time.
+- if a project didn't have work to do clients could freeze and never ever sent results or requested tasks. 
 
 # Work yet to be done
 - I close eyes on freeing resources. They might leak a lot. Better naming is also under "eventual consideration"
