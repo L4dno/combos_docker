@@ -26,6 +26,7 @@
 #include "client_side/data_client.hpp"
 #include "client_side/fetch_work.hpp"
 #include "client_side/execute_task.hpp"
+#include "parameters_struct_from_yaml.hpp"
 
 /* Create a log channel to have nice outputs. */
 #include "xbt/asserts.h"
@@ -868,10 +869,9 @@ static client_t client_new(int argc, char *argv[])
         SharedDatabase::_group_info[group_number].nv_distri = (char)atoi(argv[index++]);
         SharedDatabase::_group_info[group_number].na_param = get_distribution_parameter(argv[index++]);
         SharedDatabase::_group_info[group_number].nb_param = get_distribution_parameter(argv[index++]);
-        if ((argc - 20) % 3 != 0)
-        {
-            aux = atof(argv[index++]);
-        }
+
+        aux = parameters::parse_trace_parameter(argv[index++]);
+
         SharedDatabase::_group_info[group_number].proj_args = &argv[index];
         SharedDatabase::_group_info[group_number].on = argc - index;
 
@@ -882,8 +882,7 @@ static client_t client_new(int argc, char *argv[])
         std::unique_lock lock(*SharedDatabase::_group_info[group_number].mutex);
         while (SharedDatabase::_group_info[group_number].on == 0)
             SharedDatabase::_group_info[group_number].cond->wait(lock);
-        if (argc == 3)
-            aux = atof(argv[index]);
+        aux = parameters::parse_trace_parameter(argv[index++]);
     }
 
     if (aux == -1)
@@ -1100,7 +1099,6 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
     // printf(" Execution time:\n %d days %d hours %d min %d s\n\n", days, hours, min, (int)round(t));
 
 } /* end_of_test_all */
-#include "parameters_struct_from_yaml.hpp"
 
 void init_global_parameters(const parameters::Config &config)
 {

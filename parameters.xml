@@ -79,6 +79,7 @@
 		<pb_param>-1</pb_param>				<!-- B -->
 
         
+		<db_traces_file>/Traces/storage/disk_capacity</db_traces_file>	<!-- Host power traces file -->
         <db_distri>2</db_distri>			<!-- Disk speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<da_param>21.086878916910564</da_param>			<!-- A -->
 		<db_param>159.1597190181666</db_param>				<!-- B -->

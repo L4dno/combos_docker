@@ -8,36 +8,75 @@
 #include "rand.h"
 #include <errno.h>
 #include <string.h>
-#include "xbt/sysdep.h"
-
-double getrow(FILE *fd)
-{
-	char *line = NULL;
-	size_t len = 0;
-	double result = -1;
-
-	while (getline(&line, &len, fd) == -1)
-	{
-		rewind(fd);
-	}
-
-	if (line != NULL)
-	{
-		result = atof(line);
-	}
-	free(line);
-
-	return result;
-}
-
+#include <fstream>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
+#include "xbt/sysdep.h"
+#include "parameters_struct_from_yaml.hpp"
+
+class TraceParameter
+{
+public:
+	TraceParameter(std::optional<std::string> traces_file, std::string use_for_what) : params_stream(traces_file.has_value() ? *traces_file : "")
+	{
+		if (params_stream.is_open())
+		{
+			std::cout << "use file for " << use_for_what << ": " << *traces_file << std::endl;
+		}
+		else
+		{
+			std::cout << "use distribution for " << use_for_what << ": " << std::endl;
+			perror("can't open file");
+		}
+	}
+
+	std::optional<double> get_param()
+	{
+		if (!params_stream.is_open())
+		{
+			return std::nullopt;
+		}
+		else
+		{
+			double result = -1;
+
+			if (params_stream.eof())
+			{
+				params_stream.seekg(0);
+			}
+
+			params_stream >> result;
+
+			return result;
+		}
+	}
+
+private:
+	std::ifstream params_stream;
+};
+
+void write_trace_parameter(FILE *fd, TraceParameter &generator, const std::string &nullopt_str)
+{
+	if (auto parameter_value = generator.get_param())
+	{
+		fprintf(fd, "        <argument value=\"%lf\"/>  ", *parameter_value);
+	}
+	else
+	{
+		fprintf(fd, "        <argument value=\"%s\"/>  ", nullopt_str.c_str());
+	}
+	fprintf(fd, "\n");
+}
+
 int main(int argc, char *argv[])
 {
+	auto config = parameters::read_from_file(argv[1]);
 
-	int i, j, k, l = 0;
+	int l = 0;
 	int64_t index = 1;
 	FILE *fd;
+
 	std::string result_file = "deployment.xml";
 	const char *env_p;
 	if (env_p = std::getenv("PROJECT_SOURCE_DIR"))
@@ -45,7 +84,7 @@ int main(int argc, char *argv[])
 		result_file = std::string(env_p) + "/Files/" + result_file;
 	}
 
-	int n_projects, n_clusters, scheduling_server_number = 0, data_client_server_number = 0;
+	int scheduling_server_number = 0, data_client_server_number = 0;
 	int data_clients = 0;
 	/* Usage
 	if (argc < 2) {
@@ -71,82 +110,83 @@ int main(int argc, char *argv[])
 	fprintf(fd, "   <process host=\"r0\" function=\"show_progress\" />");
 	fprintf(fd, "\n");
 
-	n_projects = atoi(argv[index++]);
+	int n_projects = config.server_side.n_projects;
 
-	for (i = 0; i < n_projects; i++)
+	for (int i = 0; i < n_projects; i++)
 	{
-		fprintf(fd, "   <process host=\"b%s\" function=\"init_database\"> ", argv[index]);
+		auto project = config.server_side.sprojects[i];
+		fprintf(fd, "   <process host=\"b%d\" function=\"init_database\"> ", project.snumber);
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Numero del proyecto
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Nombre de proyecto
+		fprintf(fd, "           <argument value=\"%s\"/> ", project.name.c_str()); // Nombre de proyecto
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Tamanyo de respuesta - 64 KB
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.output_file_size); // Tamanyo de respuesta - 64 KB
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Duracion de workunit (en flops)
+		fprintf(fd, "           <argument value=\"%lld\"/> ", project.task_fpops); // Duracion de workunit (en flops)
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Percentage of input files generated locally
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.ifgl_percentage); // Percentage of input files generated locally
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Percentage of times a client must download new input files (they can't use previous ones)
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.ifcd_percentage); // Percentage of times a client must download new input files (they can't use previous ones)
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Average workunits per input files
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.averagewpif); // Average workunits per input files
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Quorum
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.min_quorum); // Quorum
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // target_nresults
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.target_nresults); // target_nresults
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // max_error_results
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.max_error_results); // max_error_results
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // max_total_results
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.max_total_results); // max_total_results
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // max_success_results
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.max_success_results); // max_success_results
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Deadline de workunit
+		fprintf(fd, "           <argument value=\"%lld\"/> ", project.delay_bound); // Deadline de workunit
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Success percentage
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.success_percentage); // Success percentage
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Canonical percentage
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.canonical_percentage); // Canonical percentage
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Tamanyo de workunit - 360 KB
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.input_file_size); // Tamanyo de workunit - 360 KB
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Disk speed
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.disk_bw); // Disk speed
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Number of data servers
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.ndata_servers); // Number of data servers
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Output files storage
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.output_file_storage); // Output files storage
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Files replication in data servers
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.dsreplication); // Files replication in data servers
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]); // Files replication in data clients
-		fprintf(fd, "\n");
-		fprintf(fd, "   </process> ");
-		fprintf(fd, "\n");
-		index -= 21;
-		fprintf(fd, "   <process host=\"b%s\" function=\"work_generator\"> ", argv[index]);
-		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.dcreplication); // Files replication in data clients
 		fprintf(fd, "\n");
 		fprintf(fd, "   </process> ");
 		fprintf(fd, "\n");
-		fprintf(fd, "   <process host=\"b%s\" function=\"validator\" >", argv[index]);
+
+		fprintf(fd, "   <process host=\"b%d\" function=\"work_generator\"> ", project.snumber);
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
 		fprintf(fd, "   </process> ");
 		fprintf(fd, "\n");
-		fprintf(fd, "   <process host=\"b%s\" function=\"assimilator\" >", argv[index]);
+		fprintf(fd, "   <process host=\"b%d\" function=\"validator\" >", project.snumber);
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
+		fprintf(fd, "\n");
+		fprintf(fd, "   </process> ");
+		fprintf(fd, "\n");
+		fprintf(fd, "   <process host=\"b%d\" function=\"assimilator\" >", project.snumber);
+		fprintf(fd, "\n");
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
 		fprintf(fd, "   </process> ");
 		fprintf(fd, "\n");
 
 		// Scheduling servers
-		for (j = 0; j < atoi(argv[index + 21]); j++)
+		for (int j = 0; j < project.nscheduling_servers; j++)
 		{
 			fprintf(fd, "   <process host=\"s%d%d\" function=\"scheduling_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
-			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", scheduling_server_number); // Numero del servidor
 			fprintf(fd, "\n");
@@ -155,7 +195,7 @@ int main(int argc, char *argv[])
 
 			fprintf(fd, "   <process host=\"s%d%d\" function=\"scheduling_server_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
-			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", scheduling_server_number++); // Numero del servidor
 			fprintf(fd, "\n");
@@ -164,7 +204,7 @@ int main(int argc, char *argv[])
 		}
 
 		// Data servers
-		for (j = 0; j < atoi(argv[index + 17]); j++, l++)
+		for (int j = 0; j < project.ndata_servers; j++, l++)
 		{
 			fprintf(fd, "   <process host=\"d%d%d\" function=\"data_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
@@ -177,18 +217,18 @@ int main(int argc, char *argv[])
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", l);
 			fprintf(fd, "\n");
-			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]);
+			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber);
 			fprintf(fd, "\n");
 			fprintf(fd, "   </process> ");
 			fprintf(fd, "\n");
 		}
 
 		// Data client servers
-		for (j = 0; j < atoi(argv[index + 22]); j++)
+		for (int j = 0; j < project.ndata_client_servers; j++)
 		{
 			fprintf(fd, "   <process host=\"t%d%d\" function=\"data_client_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
-			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_client_server_number); // Numero del servidor
 			fprintf(fd, "\n");
@@ -197,37 +237,40 @@ int main(int argc, char *argv[])
 
 			fprintf(fd, "   <process host=\"t%d%d\" function=\"data_client_server_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
-			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index]); // Numero del proyecto
+			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_client_server_number++); // Numero del servidor
 			fprintf(fd, "\n");
 			fprintf(fd, "   </process> ");
 			fprintf(fd, "\n");
 		}
-
-		index += 23;
 	}
 
-	n_clusters = atoi(argv[index++]);
+	int n_clusters = config.client_side.n_groups;
 
 	/* PRINT CLIENTS*/
-	for (i = 0; i < n_clusters; i++)
+	for (int i = 0; i < n_clusters; i++)
 	{
-		int n_clients = atoi(argv[index++]);
-		int ndata_clients = atoi(argv[index++]);
-		int att_projs = atoi(argv[index++]);
-		std::string traces_file = std::string(env_p).size() == 0 ? std::string("../") : std::string(env_p);
-		traces_file += std::string(argv[index++]);
-		FILE *fd_traces = fopen(traces_file.c_str(), "r");
-		if (fd_traces != NULL)
-		{
-			std::cout << "use file for cpu power: " << traces_file << std::endl;
-		}
-		else
-		{
-			perror("use distribution for cpu power");
-		}
+		auto group = config.client_side.groups[i];
 
+		int n_clients = group.n_clients;
+		int ndata_clients = group.ndata_clients;
+		int att_projs = group.att_projs;
+
+		std::string traces_file_dir = std::string(env_p).size() == 0 ? std::string("../") : std::string(env_p);
+
+		auto construct_file_name = [&traces_file_dir](const std::optional<std::string> &trace_file)
+		{
+			return trace_file.has_value() ? std::optional(traces_file_dir + *trace_file) : std::nullopt;
+		};
+
+		std::optional<std::string> host_power_traces_file = construct_file_name(group.traces_file);
+		std::optional<std::string> disk_capacity_traces_file = construct_file_name(group.db_traces_file);
+
+		TraceParameter host_power_generator(host_power_traces_file, "for host power");
+		TraceParameter disk_capacity_generator(disk_capacity_traces_file, "for host's disk capacity");
+
+		int j;
 		for (j = 0; j < n_clients - ndata_clients; j++)
 		{
 			if (j == 0)
@@ -238,52 +281,51 @@ int main(int argc, char *argv[])
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", n_clients); // <!-- Number of clients -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- ConnectionInterval -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.connection_interval); // <!-- ConnectionInterval -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- SchedulingInterval -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.scheduling_interval); // <!-- SchedulingInterval -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Max speed -->
+				fprintf(fd, "        <argument value=\"%lf\"/>  ", group.max_speed); // <!-- Max speed -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Min speed -->
+				fprintf(fd, "        <argument value=\"%lf\"/>  ", group.min_speed); // <!-- Min speed -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Sp. random distribution -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.pv_distri); // <!-- Sp. random distribution -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- A argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.pa_param); // <!-- A argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.pb_param); // <!-- B argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Db. random distribution -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.db_distri); // <!-- Db. random distribution -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- A argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.da_param); // <!-- A argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.db_param); // <!-- B argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Av. random distribution -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.av_distri); // <!-- Av. random distribution -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- A argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.aa_param); // <!-- A argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
+				fprintf(fd, "        <argument value=\"%f\"/>  ", group.ab_param); // <!-- B argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Nav. random distribution -->
+				fprintf(fd, "        <argument value=\"%d\"/>  ", group.nv_distri); // <!-- Nav. random distribution -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- A argument -->
+				fprintf(fd, "        <argument value=\"%s\"/>  ", group.na_param.c_str()); // <!-- A argument -->
 				fprintf(fd, "\n");
-				fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
+				fprintf(fd, "        <argument value=\"%s\"/>  ", group.nb_param.c_str()); // <!-- B argument -->
 				fprintf(fd, "\n");
-				if (fd_traces != NULL)
-				{
-					fprintf(fd, "        <argument value=\"%f\"/>  ", getrow(fd_traces)); // <!-- Host power -->
-					fprintf(fd, "\n");
-				}
+
+				write_trace_parameter(fd, host_power_generator, parameters::no_set_host_power); // <!-- Host power -->
+
 				fprintf(fd, "        <argument value=\"%d\"/>", att_projs); // <!-- Number of projects attached -->
 				fprintf(fd, "\n");
-				for (k = 0; k < att_projs; k++)
+				for (int k = 0; k < att_projs; k++)
 				{
-					fprintf(fd, "        <argument value=\"Project%d\"/>", atoi(argv[index]) + 1); // <!-- Project name ->
+					auto attached_project = group.gprojects[k];
+					fprintf(fd, "        <argument value=\"Project%d\"/>", attached_project.pnumber + 1); // <!-- Project name ->
 					fprintf(fd, "\n");
-					fprintf(fd, "        <argument value=\"%s\"/>", argv[index++]); // <!-- Project number -->
+					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.pnumber); // <!-- Project number -->
 					fprintf(fd, "\n");
-					fprintf(fd, "        <argument value=\"%s\"/>", argv[index++]); // <!-- Project priority -->
+					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.priority); // <!-- Project priority -->
 					fprintf(fd, "\n");
 				}
 			}
@@ -293,18 +335,12 @@ int main(int argc, char *argv[])
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", i); // <!-- Cluster number-->
 				fprintf(fd, "\n");
-				if (fd_traces != NULL)
-				{
-					fprintf(fd, "        <argument value=\"%f\"/>  ", getrow(fd_traces)); // <!-- Host power -->
-					fprintf(fd, "\n");
-				}
+				write_trace_parameter(fd, host_power_generator, parameters::no_set_host_power); // <!-- Host power -->
 			}
 
 			fprintf(fd, "   </process> ");
 			fprintf(fd, "\n");
 		}
-		if (fd_traces != NULL)
-			fclose(fd_traces);
 
 		for (; j < n_clients; j++)
 		{
@@ -314,6 +350,8 @@ int main(int argc, char *argv[])
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_clients); // Data client number
 			fprintf(fd, "\n");
+			write_trace_parameter(fd, disk_capacity_generator, parameters::no_set_disk_capacity); // <!-- Disk capacity -->
+
 			fprintf(fd, "   </process> ");
 			fprintf(fd, "\n");
 

@@ -15,6 +15,7 @@
 #include "components/types.hpp"
 #include "components/shared.hpp"
 #include "rand.h"
+#include "parameters_struct_from_yaml.hpp"
 
 /*
  *	Disk access data clients simulation
@@ -240,7 +241,7 @@ int data_client_requests(int argc, char *argv[])
     double time = 0, random;
 
     // Check number of arguments
-    if (argc != 3)
+    if (argc != 4)
     {
         printf("Invalid number of parameters in data_client_requests\n");
         return 0;
@@ -263,7 +264,11 @@ int data_client_requests(int argc, char *argv[])
     }
 
     dclient_info->working.store(uniform_int(1, 2));
-    dclient_info->total_storage = (int32_t)ran_distri(group_info->db_distri, group_info->da_param, group_info->db_param);
+    if ((dclient_info->total_storage = parameters::parse_trace_parameter(argv[3])) == -1)
+    {
+        dclient_info->total_storage = (int32_t)ran_distri(group_info->db_distri, group_info->da_param, group_info->db_param);
+    }
+    assert(dclient_info->total_storage >= 0 && "host's disk capacity can't be negative");
 
     // Create ask for files processes (1 per attached project)
     dclient_info->nprojects = atoi(group_info->proj_args[0]);

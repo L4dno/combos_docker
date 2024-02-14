@@ -20,11 +20,23 @@
 #include <string>
 #include <vector>
 #include <cassert>
+#include <optional>
 
 #include "yaml-cpp/yaml.h"
 
 namespace parameters
 {
+
+    const static std::string no_set_host_power = "host_power_null";
+    const static std::string no_set_disk_capacity = "disk_capacity_null";
+
+    inline double parse_trace_parameter(const std::string &config_param)
+    {
+        if (config_param != parameters::no_set_host_power &&
+            config_param != parameters::no_set_disk_capacity)
+            return atof(config_param.c_str());
+        return -1;
+    }
 
     struct SProject
     {
@@ -72,12 +84,14 @@ namespace parameters
         int scheduling_interval;
         std::string gbw;
         std::string glatency;
-        std::string traces_file;
+        std::optional<std::string> traces_file;
         double max_speed;
         double min_speed;
         int pv_distri;
         double pa_param;
         double pb_param;
+
+        std::optional<std::string> db_traces_file;
         int db_distri;
         double da_param;
         double db_param;
@@ -144,7 +158,7 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
             */
     };
 
-    void
+    inline void
     write_to_file(const std::string &filename, const Config &config)
     {
         YAML::Emitter emitter;
@@ -209,12 +223,19 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
             emitter << YAML::Key << "scheduling_interval" << YAML::Value << group.scheduling_interval;
             emitter << YAML::Key << "gbw" << YAML::Value << group.gbw;
             emitter << YAML::Key << "glatency" << YAML::Value << group.glatency;
-            emitter << YAML::Key << "traces_file" << YAML::Value << group.traces_file;
+            if (group.traces_file.has_value())
+            {
+                emitter << YAML::Key << "traces_file" << YAML::Value << *group.traces_file;
+            }
             emitter << YAML::Key << "max_speed" << YAML::Value << group.max_speed;
             emitter << YAML::Key << "min_speed" << YAML::Value << group.min_speed;
             emitter << YAML::Key << "pv_distri" << YAML::Value << group.pv_distri;
             emitter << YAML::Key << "pa_param" << YAML::Value << group.pa_param;
             emitter << YAML::Key << "pb_param" << YAML::Value << group.pb_param;
+            if (group.db_traces_file.has_value())
+            {
+                emitter << YAML::Key << "db_traces_file" << YAML::Value << *group.db_traces_file;
+            }
             emitter << YAML::Key << "db_distri" << YAML::Value << group.db_distri;
             emitter << YAML::Key << "da_param" << YAML::Value << group.da_param;
             emitter << YAML::Key << "db_param" << YAML::Value << group.db_param;
@@ -253,7 +274,7 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
         file << emitter.c_str();
     }
 
-    Config read_from_file(const std::string &input_file)
+    inline Config read_from_file(const std::string &input_file)
     {
         Config config;
 
@@ -317,12 +338,19 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
                 group.scheduling_interval = groupNode["scheduling_interval"].as<int>();
                 group.gbw = groupNode["gbw"].as<std::string>();
                 group.glatency = groupNode["glatency"].as<std::string>();
-                group.traces_file = groupNode["traces_file"].as<std::string>();
+                if (groupNode["traces_file"])
+                {
+                    group.traces_file = groupNode["traces_file"].as<std::string>();
+                }
                 group.max_speed = groupNode["max_speed"].as<double>();
                 group.min_speed = groupNode["min_speed"].as<double>();
                 group.pv_distri = groupNode["pv_distri"].as<int>();
                 group.pa_param = groupNode["pa_param"].as<double>();
                 group.pb_param = groupNode["pb_param"].as<double>();
+                if (groupNode["db_traces_file"])
+                {
+                    group.db_traces_file = groupNode["db_traces_file"].as<std::string>();
+                }
                 group.db_distri = groupNode["db_distri"].as<int>();
                 group.da_param = groupNode["da_param"].as<double>();
                 group.db_param = groupNode["db_param"].as<double>();

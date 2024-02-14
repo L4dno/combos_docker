@@ -162,10 +162,11 @@ do
 done
 
 echo -n "Creating platform.xml... "
+python3 xml2yaml.py
 
 ##### Platform ######
 cd build/Files
-PROJECT_SOURCE_DIR="/home/ksenia/vsc/mirror_combos" ./create_platform ${arg1[@]}
+PROJECT_SOURCE_DIR="/home/ubuntu/combos_cpp_shadow_new" ./create_platform ${arg1[@]}
 
 echo "Done"
 
@@ -236,7 +237,7 @@ done
 ##### Deployment ######
 
 echo -n "Creating deployment.xml... "
-PROJECT_SOURCE_DIR="/home/ksenia/vsc/mirror_combos" ./create_deployment ${arg2[@]}
+PROJECT_SOURCE_DIR="/home/ubuntu/combos_cpp_shadow_new" ./create_deployment ../../parameters.yaml ${arg2[@]}
 echo "Done"
 
 cd ../..
@@ -252,7 +253,7 @@ do
 done
 
 echo -n "Fix xmls... "
-cd simgrid-3.34
+cd simgrid-v3.35
 ./tools/simgrid_update_xml.pl ../Files/platform.xml
 ./tools/simgrid_update_xml.pl ../Files/deployment.xml
 cd ..
@@ -261,7 +262,7 @@ cd ..
 echo -n "Creating execute.sh... "
 cat <<EOF >execute
 #!/bin/bash
-python3 xml2yaml.py
+
 cd Files
 ../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
 cd ..
