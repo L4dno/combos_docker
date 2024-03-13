@@ -1,5 +1,6 @@
 #pragma once
 #include "types.hpp"
+#include <boost/random/linear_congruential.hpp>
 
 // todo: fix ./generator to set values in this file, not in boinc.cpp
 extern int WARM_UP_TIME;       // Warm up time in hours
@@ -9,6 +10,7 @@ extern int MAX_SIMULATED_TIME; // Simulation time in hours
 #define CREDITS_CPU_S 0.002315 // Credits per second (1 GFLOP machine)
 #define WORK_FETCH_PERIOD 60   // Work fetch period
 #define REQUEST_SIZE 10 * KB   // Request size
+static const int DOUBLE_EPS = 1e-9;
 
 // #define NUMBER_CLIENTS 1000     // Number of clients
 // #define NUMBER_DATA_CLIENTS 100 // Number of data clients
@@ -21,6 +23,17 @@ extern int g_total_number_ordinary_clients;
 extern double maxtt; // Total simulation time in seconds
 extern double maxst; // Simulation time in seconds
 extern double maxwt; // Warm up time in seconds
+
+// a random generator for general purpose
+extern std::unique_ptr<boost::rand48> g_rndg;
+// a random generator for setting a host's power
+extern std::unique_ptr<boost::rand48> g_rndg_for_host_speed;
+// a random generator for setting a disk capacity in the data client's code
+extern std::unique_ptr<boost::rand48> g_rndg_for_disk_cap;
+// a random generator for setting a an availability model in the data client's code
+extern std::unique_ptr<boost::rand48> g_rndg_for_data_client_avail;
+// a random generator for setting a an availability model in the client's code
+extern std::unique_ptr<boost::rand48> g_rndg_for_client_avail;
 
 class SharedDatabase
 {

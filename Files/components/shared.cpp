@@ -17,6 +17,12 @@ dcserver_t SharedDatabase::_dcserver_info = nullptr; // Data client servers info
 dclient_t SharedDatabase::_dclient_info = nullptr;   // Data clients information
 group_t SharedDatabase::_group_info = nullptr;       // C
 
+std::unique_ptr<boost::rand48> g_rndg = nullptr;
+std::unique_ptr<boost::rand48> g_rndg_for_host_speed = nullptr;
+std::unique_ptr<boost::rand48> g_rndg_for_disk_cap = nullptr;
+std::unique_ptr<boost::rand48> g_rndg_for_data_client_avail = nullptr;
+std::unique_ptr<boost::rand48> g_rndg_for_client_avail = nullptr;
+
 /*
  *	 Server compute simulation. Wait till the end of a executing task
  */

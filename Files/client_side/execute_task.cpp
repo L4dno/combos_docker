@@ -3,11 +3,11 @@
  *  https://boinc.berkeley.edu/trac/wiki/ClientSchedOld
  *
  * @brief
- * - client_execute_tasks: only takes task from queue, execute it and update debts
+ * - client_execute_tasks: only takes task from queue, executes it and updates debts
  * - client_update_simulate_finish_time, client_update_deadline_missed - the names are speaking
- * - schedule_job: suspend current task (project) and run a new task from the args
- * - client_cpu_scheduling: call schedule_job with task that can miss deadline, otherwise with greatest debt
- * - client_main_loop: simulate times of availability and unavailability
+ * - schedule_job: suspends current task (project) and runs a new task from the args
+ * - client_cpu_scheduling: calls schedule_job with task that can miss deadline, otherwise with greatest debt
+ * - client_main_loop: simulates times of availability and unavailability
  *
  * @ref
  * It's different from a real policy.
@@ -21,10 +21,11 @@
 #include <simgrid/s4u.hpp>
 #include <math.h>
 #include <inttypes.h>
+#include <boost/random/linear_congruential.hpp>
 
 #include "components/types.hpp"
 #include "components/shared.hpp"
-#include "rand.h"
+#include "rand.hpp"
 #include <boost/intrusive/list.hpp>
 
 #define MAX_SHORT_TERM_DEBT 86400
@@ -503,60 +504,88 @@ static void client_cpu_scheduling(client_t client)
     }
 }
 
+enum class ClientState
+{
+    Available,
+    Unavailable
+};
+
+double get_available_period_span(client_t client, boost::rand48 &rndg)
+{
+    double random = (ran_distri(SharedDatabase::_group_info[client->group_number].av_distri, SharedDatabase::_group_info[client->group_number].aa_param, SharedDatabase::_group_info[client->group_number].ab_param, rndg) * 3600.0);
+    if (ceil(random + sg4::Engine::get_clock()) >= maxtt)
+    {
+        random = (double)std::max(maxtt - sg4::Engine::get_clock(), 0.0);
+    }
+    return random;
+}
+
 std::pair<int, int> client_main_loop(client_t client)
 {
     int64_t power = client->power;
-    dsmessage_t msg2;
-    double time = 0, random = 0;
-    int working = 0, i;
-    int time_sim = 0;
-    double time_wait;
-    double available = 0, notavailable = 0;
+    double next_non_avail_start = 0, random = 0, last_avail_start = 0;
+    ClientState cl_state = ClientState::Available;
+    double sum_available_time = 0, sum_unavailable_time = 0;
+    auto &rndg = *g_rndg_for_client_avail;
+
+    next_non_avail_start = sg4::Engine::get_clock() + get_available_period_span(client, rndg);
     while (ceil(sg4::Engine::get_clock()) < maxtt)
     {
-        // printf("%s finished: %d, nprojects: %d en %f\n", client->name, client->finished, client->n_projects, sg4::Engine::get_clock());
-        if (!working)
+        // Simulate the period of availability
+        while (cl_state == ClientState::Available)
         {
-            working = 1;
-            random = (ran_distri(SharedDatabase::_group_info[client->group_number].av_distri, SharedDatabase::_group_info[client->group_number].aa_param, SharedDatabase::_group_info[client->group_number].ab_param) * 3600.0);
-            if (ceil(random + sg4::Engine::get_clock()) >= maxtt)
+            /* increase wall_cpu_time to the project running task */
+            if (client->running_project && client->running_project->running_task)
             {
-                // printf("%f\n", random);
-                random = (double)std::max(maxtt - sg4::Engine::get_clock(), 0.0);
+                client->running_project->wall_cpu_time += sg4::Engine::get_clock() - client->last_wall;
+                client->last_wall = sg4::Engine::get_clock();
             }
-            available += random;
-            // printf("Weibull: %f\n", random);
-            time = sg4::Engine::get_clock() + random;
-        }
 
-        /* increase wall_cpu_time to the project running task */
-        if (client->running_project && client->running_project->running_task)
-        {
-            client->running_project->wall_cpu_time += sg4::Engine::get_clock() - client->last_wall;
-            client->last_wall = sg4::Engine::get_clock();
-        }
-        // SAUL
-        client_update_debt(client);
-        client_update_deadline_missed(client);
-        client_cpu_scheduling(client);
+            client_update_debt(client);
+            client_update_deadline_missed(client);
+            client_cpu_scheduling(client);
 
-        if (client->on)
-            client->work_fetch_cond->notify_all();
+            if (client->on)
+                client->work_fetch_cond->notify_all();
+
+            // sleep till the end of the simulation or the next non-availability period
+            try
+            {
+                double time_wait = std::min(
+                    std::min(maxtt, next_non_avail_start) - sg4::Engine::get_clock(),
+                    SharedDatabase::_group_info[client->group_number].scheduling_interval);
+                if (time_wait < 0)
+                    time_wait = 0;
+                std::unique_lock lock(*client->sched_mutex);
+                client->sched_cond->wait_for(lock, time_wait);
+            }
+            catch (std::exception &e)
+            {
+                std::cout << "exception at the line " << __LINE__ << ' ' << e.what() << std::endl;
+            }
+            if (sg4::Engine::get_clock() >= maxtt)
+            {
+                sum_available_time += sg4::Engine::get_clock() - last_avail_start;
+                break;
+            }
+            if (sg4::Engine::get_clock() >= next_non_avail_start - DOUBLE_EPS)
+            {
+                sum_available_time += sg4::Engine::get_clock() - last_avail_start;
+                cl_state = ClientState::Unavailable;
+            }
+        }
 
         /*************** SIMULATE CLIENT DOWN TIME ****/
 
-        if (working && ceil(sg4::Engine::get_clock()) >= time)
+        if (cl_state == ClientState::Unavailable)
         {
-            working = 0;
-            random = (ran_distri(SharedDatabase::_group_info[client->group_number].nv_distri, SharedDatabase::_group_info[client->group_number].na_param, SharedDatabase::_group_info[client->group_number].nb_param) * 3600.0);
-
+            random = (ran_distri(SharedDatabase::_group_info[client->group_number].nv_distri, SharedDatabase::_group_info[client->group_number].na_param, SharedDatabase::_group_info[client->group_number].nb_param, rndg) * 3600.0);
             if (ceil(random + sg4::Engine::get_clock()) > maxtt)
             {
                 random = std::max(maxtt - sg4::Engine::get_clock(), 0.0);
-                working = 1;
             }
 
-            notavailable += random;
+            sum_unavailable_time += random;
 
             if (client->running_project)
                 client->running_project->thread->suspend();
@@ -571,26 +600,18 @@ std::pair<int, int> client_main_loop(client_t client)
             sg4::this_actor::sleep_for(random);
 
             if (client->running_project)
+            {
                 client->running_project->thread->resume();
+            }
 
-            // printf(" Cliente %s RESUME %e\n", client->name, sg4::Engine::get_clock());
+            // prepare for the availability period
+            cl_state = ClientState::Available;
+            last_avail_start = sg4::Engine::get_clock();
+            next_non_avail_start = sg4::Engine::get_clock() + get_available_period_span(client, rndg);
         }
 
         /*************** END OF SIMULATION OF DOWNTIME ****/
-
-        try
-        {
-            time_wait = std::min(maxtt - sg4::Engine::get_clock(), SharedDatabase::_group_info[client->group_number].scheduling_interval);
-            if (time_wait < 0)
-                time_wait = 0;
-            std::unique_lock lock(*client->sched_mutex);
-            client->sched_cond->wait_for(lock, time_wait);
-        }
-        catch (std::exception &e)
-        {
-            time_sim++;
-            std::cout << "exception int the line " << __LINE__ << ' ' << e.what() << std::endl;
-        }
     }
-    return {available, notavailable};
+
+    return {sum_available_time, sum_unavailable_time};
 }

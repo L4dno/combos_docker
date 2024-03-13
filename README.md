@@ -38,6 +38,8 @@ I believe it won't work as it because my files are specific for my host. I can s
 - there were problems with system (deadlocks or exceptions) when simulation finished. Now it has to be fixed.
 - tasks' deadlines wer calculated as delay_bound + creation time, not delay_bound + sent time.
 - if a project didn't have work to do clients could freeze and never ever sent results or requested tasks. 
+- add several random generators, so that if during experiments you vary one part of the system and set seeds manually, other parts of the system remain deterministic. Previously, the generator was single and different ```gproject/priority``` parameters caused different availability periods, what was undesirable. 
+
 
 # Work yet to be done
 - I close eyes on freeing resources. They might leak a lot. Better naming is also under "eventual consideration"

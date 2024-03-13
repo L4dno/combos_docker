@@ -37,7 +37,8 @@ if(Boost_FOUND)
 
     
 
-    add_executable(boinc_sim_cpp boinc.cpp rand.cpp components/scheduler.cpp
+    # Todo: if possible, how can I split it
+    add_executable(boinc_sim_cpp boinc.cpp components/scheduler.cpp
                    components/data_server.cpp components/shared.cpp
                    components/data_client_server.cpp client_side/data_client.cpp
                    client_side/fetch_work.cpp client_side/execute_task.cpp)
@@ -45,8 +46,8 @@ if(Boost_FOUND)
 
 endif()
 
-add_executable(create_deployment create_deployment.cpp rand.cpp)
+add_executable(create_deployment create_deployment.cpp)
 target_link_libraries(create_deployment yaml-cpp)
 
-add_executable(create_platform create_platform.cpp rand.cpp)
+add_executable(create_platform create_platform.cpp)
 

@@ -6,7 +6,7 @@
 
 #include "components/types.hpp"
 #include "components/shared.hpp"
-#include "rand.h"
+#include "rand.hpp"
 
 /**
  * @brief straightforward
@@ -83,11 +83,11 @@ static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
         proj->total_tasks_checked++;
 
         // Executed task status [SUCCES, FAIL]
-        if (uniform_int(0, 99) < project.success_percentage)
+        if (uniform_int(0, 99, *g_rndg) < project.success_percentage)
         {
             ((reply_t)ssexecution_results->content)->status = SUCCESS;
             // Executed task value [CORRECT, INCORRECT]
-            if (uniform_int(0, 99) < project.canonical_percentage)
+            if (uniform_int(0, 99, *g_rndg) < project.canonical_percentage)
                 ((reply_t)ssexecution_results->content)->value = CORRECT;
             else
                 ((reply_t)ssexecution_results->content)->value = INCORRECT;
@@ -107,7 +107,7 @@ static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
         // Create execution results task
 
         // Send message to the server
-        auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
+        auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1, *g_rndg)];
 
         sg4::Mailbox::by_name(scheduling_server_mailbox)->put(ssexecution_results, REPLY_SIZE);
 
@@ -118,7 +118,7 @@ static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
             {
                 dsmessage_t dsoutput_file = new s_dsmessage_t();
                 dsoutput_file->type = REPLY;
-                auto data_server_mailbox = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
+                auto data_server_mailbox = project.data_servers[uniform_int(0, project.ndata_servers - 1, *g_rndg)];
 
                 sg4::Mailbox::by_name(data_server_mailbox)->put(dsoutput_file, project.output_file_size);
             }
@@ -129,7 +129,7 @@ static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
 
             for (int32_t i = 0; i < project.dcreplication; i++)
             {
-                std::string data_client_name = project.data_clients[uniform_int(0, project.ndata_clients - 1)];
+                std::string data_client_name = project.data_clients[uniform_int(0, project.ndata_clients - 1, *g_rndg)];
                 int data_client_number = atoi(data_client_name.c_str() + 2) - g_total_number_ordinary_clients;
                 if (!SharedDatabase::_dclient_info[data_client_number].working.load())
                 {
@@ -199,7 +199,7 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     ((request_t)sswork_request->content)->power = client->power;
     ((request_t)sswork_request->content)->percentage = percentage;
 
-    auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1)];
+    auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1, *g_rndg)];
 
     sg4::Mailbox::by_name(scheduling_server_mailbox)->put(sswork_request, REQUEST_SIZE);
 
@@ -214,10 +214,10 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     {
 
         // Download input files (or generate them locally)
-        if (uniform_int(0, 99) < (int)project.ifgl_percentage)
+        if (uniform_int(0, 99, *g_rndg) < (int)project.ifgl_percentage)
         {
             // Download only if the workunit was not downloaded previously
-            if (uniform_int(0, 99) < (int)project.ifcd_percentage)
+            if (uniform_int(0, 99, *g_rndg) < (int)project.ifcd_percentage)
             {
 
                 for (int32_t i = 0; i < sswork_reply->ninput_files; i++)
@@ -294,7 +294,7 @@ int client_work_fetch(client_t client)
     double next_project_testing_period = project_testing_period;
 
     sg4::this_actor::sleep_for(maxwt);
-    sg4::this_actor::sleep_for(uniform_ab(0, 3600));
+    sg4::this_actor::sleep_for(uniform_ab(0, 3600, *g_rndg));
 
     // client_t client = MSG_process_get_data(MSG_process_self());
     std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;

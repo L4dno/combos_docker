@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
-#include "rand.h"
 #include <errno.h>
 #include <string.h>
 #include <fstream>
@@ -99,8 +98,6 @@ int main(int argc, char *argv[])
 		printf("Error opening deployment file!\n");
 		exit(1);
 	}
-
-	seed(clock());
 
 	/* BASICS */
 	fprintf(fd, "<?xml version='1.0'?>\n");

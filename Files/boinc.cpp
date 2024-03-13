@@ -19,6 +19,7 @@
 #include <simgrid/engine.h>
 #include <simgrid/s4u.hpp>
 #include <boost/intrusive/list.hpp>
+#include <boost/random/linear_congruential.hpp>
 
 #include "components/types.hpp"
 #include "components/shared.hpp"
@@ -30,7 +31,7 @@
 
 /* Create a log channel to have nice outputs. */
 #include "xbt/asserts.h"
-#include "rand.h"
+#include "rand.hpp"
 
 typedef struct request s_request_t, *request_t;                   // Client request to scheduling server
 typedef struct reply s_reply_t, *reply_t;                         // Client reply to scheduling server
@@ -427,7 +428,7 @@ WorkunitT *generate_workunit(ProjectDatabaseValue &project)
     for (i = 0; i < project.dcreplication; i++)
         workunit->input_files[i] = "";
     for (; i < workunit->ninput_files; i++)
-        workunit->input_files[i] = project.data_servers[uniform_int(0, project.ndata_servers - 1)];
+        workunit->input_files[i] = project.data_servers[uniform_int(0, project.ndata_servers - 1, *g_rndg)];
 
     project.nworkunits++;
 
@@ -887,7 +888,7 @@ static client_t client_new(int argc, char *argv[])
 
     if (aux == -1)
     {
-        aux = ran_distri(SharedDatabase::_group_info[group_number].sp_distri, SharedDatabase::_group_info[group_number].sa_param, SharedDatabase::_group_info[group_number].sb_param);
+        aux = ran_distri(SharedDatabase::_group_info[group_number].sp_distri, SharedDatabase::_group_info[group_number].sa_param, SharedDatabase::_group_info[group_number].sb_param, *g_rndg_for_host_speed);
         if (aux > SharedDatabase::_group_info[group_number].max_power)
             aux = SharedDatabase::_group_info[group_number].max_power;
         else if (aux < SharedDatabase::_group_info[group_number].min_power)
@@ -1142,7 +1143,12 @@ int main(int argc, char *argv[])
     auto config = parameters::read_from_file(argv[3]);
     init_global_parameters(config);
 
-    seed(clock());
+    // set seeds of random generators
+    g_rndg = std::make_unique<boost::random::rand48>(time(0));
+    g_rndg_for_host_speed = std::make_unique<boost::random::rand48>(time(0));
+    g_rndg_for_disk_cap = std::make_unique<boost::random::rand48>(time(0));
+    g_rndg_for_data_client_avail = std::make_unique<boost::random::rand48>(time(0));
+    g_rndg_for_client_avail = std::make_unique<boost::random::rand48>(time(0));
 
     _total_power = 0;
     _total_available = 0;

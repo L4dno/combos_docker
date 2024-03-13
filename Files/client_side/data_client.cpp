@@ -14,7 +14,7 @@
 
 #include "components/types.hpp"
 #include "components/shared.hpp"
-#include "rand.h"
+#include "rand.hpp"
 #include "parameters_struct_from_yaml.hpp"
 
 /*
@@ -116,7 +116,7 @@ int data_client_ask_for_files(ask_for_files_t params)
             dcsrequest->datatype = dcsmessage_content::SDcsrequestT;
             ((dcsrequest_t)dcsrequest->content)->answer_mailbox = self_mailbox->get_name();
 
-            auto data_client_server_mailbox = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1)];
+            auto data_client_server_mailbox = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1, *g_rndg)];
 
             sg4::Mailbox::by_name(data_client_server_mailbox)->put(dcsrequest, 1);
 
@@ -131,10 +131,10 @@ int data_client_ask_for_files(ask_for_files_t params)
                         continue;
 
                     // Download input files (or generate them locally)
-                    if (uniform_int(0, 99) < (int)project.ifgl_percentage)
+                    if (uniform_int(0, 99, *g_rndg) < (int)project.ifgl_percentage)
                     {
                         // Download only if the workunit was not downloaded previously
-                        if (uniform_int(0, 99) < (int)project.ifcd_percentage)
+                        if (uniform_int(0, 99, *g_rndg) < (int)project.ifcd_percentage)
                         {
                             for (i = 0; i < workunit->ninput_files; i++)
                             {
@@ -263,10 +263,10 @@ int data_client_requests(int argc, char *argv[])
             group_info->cond->wait(lock);
     }
 
-    dclient_info->working.store(uniform_int(1, 2));
+    dclient_info->working.store(uniform_int(1, 2, *g_rndg));
     if ((dclient_info->total_storage = parameters::parse_trace_parameter(argv[3])) == -1)
     {
-        dclient_info->total_storage = (int32_t)ran_distri(group_info->db_distri, group_info->da_param, group_info->db_param);
+        dclient_info->total_storage = (int32_t)ran_distri(group_info->db_distri, group_info->da_param, group_info->db_param, *g_rndg_for_disk_cap);
     }
     assert(dclient_info->total_storage >= 0 && "host's disk capacity can't be negative");
 
@@ -297,7 +297,7 @@ int data_client_requests(int argc, char *argv[])
         if (dclient_info->working.load() == 2)
         {
             dclient_info->working.store(1);
-            random = (ran_distri(group_info->av_distri, group_info->aa_param, group_info->ab_param) * 3600.0);
+            random = (ran_distri(group_info->av_distri, group_info->aa_param, group_info->ab_param, *g_rndg_for_data_client_avail) * 3600.0);
             if (ceil(random + sg4::Engine::get_clock() >= maxtt))
                 random = (double)std::max(maxtt - sg4::Engine::get_clock(), 0.0);
             time = sg4::Engine::get_clock() + random;
@@ -306,7 +306,7 @@ int data_client_requests(int argc, char *argv[])
         // Non available
         if (dclient_info->working.load() == 1 && ceil(sg4::Engine::get_clock()) >= time)
         {
-            random = (ran_distri(group_info->nv_distri, group_info->na_param, group_info->nb_param) * 3600.0);
+            random = (ran_distri(group_info->nv_distri, group_info->na_param, group_info->nb_param, *g_rndg_for_data_client_avail) * 3600.0);
             if (ceil(random + sg4::Engine::get_clock() >= maxtt))
                 random = (double)std::max(maxtt - sg4::Engine::get_clock(), 0.0);
             if (random > 0)
