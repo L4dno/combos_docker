@@ -39,6 +39,7 @@ I believe it won't work as it because my files are specific for my host. I can s
 - tasks' deadlines wer calculated as delay_bound + creation time, not delay_bound + sent time.
 - if a project didn't have work to do clients could freeze and never ever sent results or requested tasks. 
 - add several random generators, so that if during experiments you vary one part of the system and set seeds manually, other parts of the system remain deterministic. Previously, the generator was single and different ```gproject/priority``` parameters caused different availability periods, what was undesirable. 
+- suspend and resume msg_task when simulate down time of a client. Previously, a running task continues to be executed even if we simulated non-availability period.
 
 
 # Work yet to be done
@@ -63,6 +64,8 @@ estimated flops in particular. If you decrease this parameter for one of the pro
 problem, but I don't know the reason and how to eliminate it. If you have thoughts please share them.
 
 A workaround for this problem is to find the line with "Gasp! This exception may be lost by subsequent calls." in your installation of simgrid, comment it and rebuild the library. In the future more normal workaround can be implemented when we first print results and then finish the simulation.
+
+Another problem is described in [this issue](https://github.com/simgrid/simgrid/issues/394). It affects the simulation significantly and isn't fixed yet.
 
 # Explanations of some parts:
 1. task flops:
