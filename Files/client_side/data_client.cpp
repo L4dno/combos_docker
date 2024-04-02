@@ -11,6 +11,7 @@
 #include <simgrid/s4u.hpp>
 #include <math.h>
 #include <inttypes.h>
+#include <boost/random/linear_congruential.hpp>
 
 #include "components/types.hpp"
 #include "components/shared.hpp"

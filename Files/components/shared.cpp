@@ -23,6 +23,9 @@ std::unique_ptr<boost::rand48> g_rndg_for_disk_cap = nullptr;
 std::unique_ptr<boost::rand48> g_rndg_for_data_client_avail = nullptr;
 std::unique_ptr<boost::rand48> g_rndg_for_client_avail = nullptr;
 
+std::unordered_map<std::string, thermometer::Measure<double> *> g_measure_task_duration_per_project = {};
+thermometer::Measure<double> *g_measure_non_availability_duration = nullptr;
+
 /*
  *	 Server compute simulation. Wait till the end of a executing task
  */

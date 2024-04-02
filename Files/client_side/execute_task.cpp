@@ -25,12 +25,15 @@
 
 #include "components/types.hpp"
 #include "components/shared.hpp"
+#include "tools/execution_state.hpp"
 #include "rand.hpp"
+#include "tools/thermometer.hpp"
 #include <boost/intrusive/list.hpp>
 
 #define MAX_SHORT_TERM_DEBT 86400
 
 namespace xbt = simgrid::xbt;
+namespace es = execution_state;
 
 void client_update_debt(client_t client)
 {
@@ -110,6 +113,7 @@ void client_clean_short_debt(const client_t client)
  */
 void free_task(TaskT *task)
 {
+    task->is_freed = true;
     if (task->project->running_task == task)
     {
         task->running = 0;
@@ -128,9 +132,12 @@ void free_task(TaskT *task)
     if (task->sim_tasks_hookup.is_linked())
         xbt::intrusive_erase(task->project->sim_tasks, *task);
 
-    if (task->tasks_hookup.is_linked())
-        xbt::intrusive_erase(task->project->tasks_swag, *task);
+    {
+        std::unique_lock lock(*task->project->tasks_swag_mutex);
 
+        if (task->tasks_hookup.is_linked())
+            xbt::intrusive_erase(task->project->tasks_swag, *task);
+    }
     // delete task;
 }
 
@@ -169,7 +176,9 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
 
         auto msg_task = task->msg_task;
 
-        // error_t err = MSG_task_execute(task->msg_task);
+        es::Switcher::switch_to(proj->client->name, es::State::Busy, task->project->name);
+        task->last_start_time = sg4::Engine::get_clock();
+
         msg_task->set_host(sg4::this_actor::get_host());
         msg_task->start();
 
@@ -177,6 +186,10 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
         try
         {
             msg_task->wait();
+
+            es::Switcher::switch_to(proj->client->name, es::State::Idle);
+            task->time_spent_on_execution += sg4::Engine::get_clock() - task->last_start_time;
+            g_measure_task_duration_per_project.at(proj->name)->add_to_series(task->time_spent_on_execution);
 
             number = (int32_t)atoi(task->name.c_str());
             // printf("s%d TERMINO EJECUCION DE %d en %f\n", proj->number, number, sg4::Engine::get_clock());
@@ -204,6 +217,7 @@ int client_execute_tasks(ProjectInstanceOnClient *proj)
         {
         }
 
+        es::Switcher::switch_to(proj->client->name, es::State::Idle);
         // task->running = 0;
         proj->running_task = NULL;
         // free_task(task);
@@ -253,6 +267,7 @@ static void client_update_simulate_finish_time(client_t client)
     for (auto &[key, proj] : projects)
     {
         locks_inprojects.push_back(std::unique_lock{*proj->run_list_mutex});
+        locks_inprojects.push_back(std::unique_lock{*proj->tasks_swag_mutex});
         total_tasks += proj->tasks_swag.size() + proj->run_list.size();
 
         for (auto &task : proj->tasks_swag)
@@ -323,6 +338,8 @@ static void client_update_deadline_missed(client_t client)
 
     for (auto &[key, proj] : projects)
     {
+        std::unique_lock lock(*proj->tasks_swag_mutex);
+
         //  was x b t_swag_foreach_safe
         for (auto &task : proj->tasks_swag)
         {
@@ -335,7 +352,7 @@ static void client_update_deadline_missed(client_t client)
                 // printf("((((((((((((((  HEAP PUSH      1   heap index %d\n", task->heap_index);
             }
         }
-        std::unique_lock lock(*proj->run_list_mutex);
+        std::unique_lock lock_(*proj->run_list_mutex);
         for (auto &task : proj->run_list)
         {
             client->deadline_missed.erase(&task);
@@ -359,12 +376,14 @@ static void client_enforcement_policy()
 
 static void schedule_job(client_t client, TaskT *job)
 {
+
     /* task already running, just return */
     if (job->running)
     {
         if (client->running_project != job->project)
         {
             client->running_project->thread->suspend();
+            es::Switcher::switch_to(client->name, es::State::Busy, job->project->name);
             job->project->thread->resume();
 
             client->running_project = job->project;
@@ -386,9 +405,10 @@ static void schedule_job(client_t client, TaskT *job)
     /* if a task is running, cancel it and create new MSG_task */
     if (job->project->running_task != NULL)
     {
-        double remains;
         TaskT *task_temp = job->project->running_task;
-        remains = task_temp->msg_task->get_remaining();
+        task_temp->time_spent_on_execution += sg4::Engine::get_clock() - task_temp->last_start_time;
+
+        double remains = task_temp->msg_task->get_remaining();
         task_temp->msg_task->cancel();
         task_temp->msg_task = sg4::Exec::init();
         task_temp->msg_task->set_name(task_temp->name);
@@ -402,6 +422,9 @@ static void schedule_job(client_t client, TaskT *job)
     {
         client->running_project->thread->suspend();
     }
+
+    es::Switcher::switch_to(client->name, es::State::Busy, job->project->name);
+
     job->project->thread->resume();
 
     client->running_project = job->project;
@@ -413,7 +436,7 @@ FIXME: if the task finish exactly at the same time of this function is called (i
 static void client_cpu_scheduling(client_t client)
 {
     ProjectInstanceOnClient *proj = nullptr, *great_debt_proj = nullptr;
-    std::map<std::string, ProjectInstanceOnClient *> projects = client->projects;
+    std::map<std::string, ProjectInstanceOnClient *> &projects = client->projects;
     double great_debt;
 
     /* schedule EDF task */
@@ -422,6 +445,9 @@ static void client_cpu_scheduling(client_t client)
     {
         TaskT *task = *client->deadline_missed.begin();
         client->deadline_missed.erase(client->deadline_missed.begin());
+        // todo: this workaround shouldn't be there. Probably task is deleted before it is stopped using
+        if (task->is_freed)
+            continue;
 
         if (deadline_missed(task))
         {
@@ -431,7 +457,10 @@ static void client_cpu_scheduling(client_t client)
 
             client_update_debt(client);      // FELIX
             client_clean_short_debt(client); // FELIX
-            task->msg_task->cancel();
+            if (task->msg_task)
+            {
+                task->msg_task->cancel();
+            }
             free_task(task);
 
             continue;
@@ -440,9 +469,12 @@ static void client_cpu_scheduling(client_t client)
         // printf("Client (%s): Scheduling task(%s)(%p) of project(%s)\n", client->name, MSG_task_get_name(task->msg_task), task, task->project->name);
         //  update debt (anticipated). It isn't needed due to we only schedule one job per host.
 
-        if (task->tasks_hookup.is_linked())
-            xbt::intrusive_erase(task->project->tasks_swag, *task);
+        {
+            std::unique_lock lock(*task->project->tasks_swag_mutex);
 
+            if (task->tasks_hookup.is_linked())
+                xbt::intrusive_erase(task->project->tasks_swag, *task);
+        }
         if (!task->run_list_hookup.is_linked())
             task->project->run_list.push_back(*task);
 
@@ -476,21 +508,28 @@ static void client_cpu_scheduling(client_t client)
         }
 
         /* get task already running or first from tasks list */
-        if (!great_debt_proj->run_list.empty())
         {
-            task = &(*great_debt_proj->run_list.begin());
-        }
-        else if (!great_debt_proj->tasks_swag.empty())
-        {
-            task = &(*great_debt_proj->tasks_swag.begin());
-            great_debt_proj->tasks_swag.pop_front();
-            great_debt_proj->run_list.push_front(*task);
+            std::unique_lock lock(*great_debt_proj->run_list_mutex);
+            std::unique_lock lock_(*great_debt_proj->tasks_swag_mutex);
+
+            if (!great_debt_proj->run_list.empty())
+            {
+                task = &(*great_debt_proj->run_list.begin());
+            }
+            else if (!great_debt_proj->tasks_swag.empty())
+            {
+                task = &(*great_debt_proj->tasks_swag.begin());
+                great_debt_proj->tasks_swag.pop_front();
+                great_debt_proj->run_list.push_front(*task);
+            }
         }
         if (task)
         {
             if (deadline_missed(task))
             {
                 // printf(">>>>>>>>>>>> Task-2(%s)(%p) from project(%s) deadline, skip it\n", task->name, task, task->project->name);
+                ++(task->project->total_tasks_missed);
+
                 task->msg_task->cancel();
                 free_task(task);
                 continue;
@@ -546,7 +585,9 @@ std::pair<int, int> client_main_loop(client_t client)
             client_cpu_scheduling(client);
 
             if (client->on)
+            {
                 client->work_fetch_cond->notify_all();
+            }
 
             // sleep till the end of the simulation or the next non-availability period
             try
@@ -580,6 +621,9 @@ std::pair<int, int> client_main_loop(client_t client)
         if (cl_state == ClientState::Unavailable)
         {
             random = (ran_distri(SharedDatabase::_group_info[client->group_number].nv_distri, SharedDatabase::_group_info[client->group_number].na_param, SharedDatabase::_group_info[client->group_number].nb_param, rndg) * 3600.0);
+
+            g_measure_non_availability_duration->add_to_series(random);
+
             if (ceil(random + sg4::Engine::get_clock()) > maxtt)
             {
                 random = std::max(maxtt - sg4::Engine::get_clock(), 0.0);
@@ -588,7 +632,16 @@ std::pair<int, int> client_main_loop(client_t client)
             sum_unavailable_time += random;
 
             if (client->running_project)
+            {
                 client->running_project->thread->suspend();
+                auto &running_task = client->running_project->running_task;
+                if (running_task != nullptr)
+                {
+                    running_task->time_spent_on_execution += sg4::Engine::get_clock() - running_task->last_start_time;
+                    running_task->msg_task->suspend();
+                }
+            }
+            es::Switcher::switch_to(client->name, es::State::Unavailable);
 
             client->ask_for_work_mutex->lock();
             client->suspended = random;
@@ -601,7 +654,18 @@ std::pair<int, int> client_main_loop(client_t client)
 
             if (client->running_project)
             {
+                es::Switcher::switch_to(client->name, es::State::Busy, client->running_project->name);
+                auto &running_task = client->running_project->running_task;
+                if (running_task != nullptr)
+                {
+                    running_task->last_start_time = sg4::Engine::get_clock();
+                    running_task->msg_task->resume();
+                }
                 client->running_project->thread->resume();
+            }
+            else
+            {
+                es::Switcher::switch_to(client->name, es::State::Idle);
             }
 
             // prepare for the availability period
@@ -612,6 +676,6 @@ std::pair<int, int> client_main_loop(client_t client)
 
         /*************** END OF SIMULATION OF DOWNTIME ****/
     }
-
+    es::Switcher::switch_to(client->name, es::State::Unavailable);
     return {sum_available_time, sum_unavailable_time};
 }

@@ -1,0 +1,10 @@
+simgrid-v3*
+build/
+.vscode/
+performance/
+Metrics/
+Files/CMakeLists.txt
+Traces/lhc/*
+csv/
+log_save.log
+traces/

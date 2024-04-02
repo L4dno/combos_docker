@@ -1,5 +1,6 @@
 #pragma once
 #include "types.hpp"
+#include "tools/thermometer.hpp"
 #include <boost/random/linear_congruential.hpp>
 
 // todo: fix ./generator to set values in this file, not in boinc.cpp
@@ -34,6 +35,9 @@ extern std::unique_ptr<boost::rand48> g_rndg_for_disk_cap;
 extern std::unique_ptr<boost::rand48> g_rndg_for_data_client_avail;
 // a random generator for setting a an availability model in the client's code
 extern std::unique_ptr<boost::rand48> g_rndg_for_client_avail;
+
+extern std::unordered_map<std::string, thermometer::Measure<double> *> g_measure_task_duration_per_project;
+extern thermometer::Measure<double>* g_measure_non_availability_duration;
 
 class SharedDatabase
 {

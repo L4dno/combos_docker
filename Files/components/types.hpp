@@ -190,7 +190,10 @@ struct TaskT
     double sent_time;
     double sim_finish; // Simulated finish time of task
     double sim_remains;
-    // double comp_cost; // Task flops to execute. Can be less than duration if it was halt.
+    double time_spent_on_execution = 0; // the simulation time during which task was executed.
+    double last_start_time;             // the last time task was taken for execution
+
+    bool is_freed = false;
 };
 
 using TaskSwagT = intrusive::list<TaskT, intrusive::member_hook<TaskT, intrusive::list_member_hook<>,
@@ -214,9 +217,11 @@ struct ProjectInstanceOnClient
 
     /* Data to control tasks and their execution */
 
-    TaskT *running_task;    // which is the task that is running on thread */
-    sg4::ActorPtr thread;   // thread running the tasks of this project */
-    client_t client;        // Client pointer
+    TaskT *running_task;  // which is the task that is running on thread */
+    sg4::ActorPtr thread; // thread running the tasks of this project */
+    client_t client;      // Client pointer
+    sg4::MutexPtr tasks_swag_mutex;
+
     TaskSwagT tasks_swag;   // nearly runnable jobs of project, insert at tail to keep ordered
     SimTaskSwagT sim_tasks; // nearly runnable jobs of project, insert at tail to keep ordered
     sg4::MutexPtr run_list_mutex;
@@ -338,6 +343,7 @@ struct ProjectDatabaseValue
     int64_t nsuccess_results;   // Number of success results
     int64_t nerror_results;     // Number of error results
     int64_t ndelay_results;     // Number of results delayed
+    int64_t ncancelled_results; // Number of cancelled results on client
 
     /* Workunit statistics */
 

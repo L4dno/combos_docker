@@ -36,12 +36,16 @@ static void client_update_shortfall(client_t client)
     for (auto &[key, proj] : projects)
     {
         total_time_proj = 0;
-        for (auto &task : proj->tasks_swag)
         {
-            total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
 
-            // printf("SHORTFALL(1) %g   %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
-            client->no_actions = 0;
+            std::unique_lock lock(*proj->tasks_swag_mutex);
+            for (auto &task : proj->tasks_swag)
+            {
+                total_time_proj += (task.msg_task->get_remaining() * client->factor) / power;
+
+                // printf("SHORTFALL(1) %g   %s    %g   \n",  sg4::Engine::get_clock(), proj->name,   MSG_task_get_remaining_computation(task->msg_task));
+                client->no_actions = 0;
+            }
         }
         {
             std::unique_lock lock(*proj->run_list_mutex);
@@ -265,8 +269,11 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
         t->msg_task->set_name(t->name);
         t->msg_task->set_flops_amount(t->duration);
         t->project = proj;
-        proj->tasks_swag.push_back(*t);
+        {
+            std::unique_lock lock(*proj->tasks_swag_mutex);
 
+            proj->tasks_swag.push_back(*t);
+        }
         // Increase the total number of tasks received
         proj->total_tasks_received++;
     }
@@ -312,6 +319,7 @@ int client_work_fetch(client_t client)
 
         /* Wait when the client is suspended */
         client->ask_for_work_mutex->lock();
+
         while (client->suspended)
         {
             sleep = client->suspended;
@@ -338,6 +346,8 @@ int client_work_fetch(client_t client)
             }
         }
 
+        bool were_waiting_on = false;
+
         ProjectInstanceOnClient *selected_proj = nullptr;
         for (auto &[key, proj] : projects)
         {
@@ -349,6 +359,7 @@ int client_work_fetch(client_t client)
             // printf("Shortfall %s: %f\n", proj->name, proj->shortfall);
             if (!proj->on)
             {
+                were_waiting_on = true;
                 continue;
             }
             if (!client->no_actions && proj->long_debt < -SharedDatabase::_group_info[client->group_number].scheduling_interval)
@@ -408,7 +419,14 @@ FIXME: http://www.boinc-wiki.info/Work-Fetch_Policy */
             {
                 // printf("EXIT 1: remaining %f, time %f\n", max-sg4::Engine::get_clock(), sg4::Engine::get_clock());
                 // sg4::ConditionVariableimedwait(client->work_fetch_cond, client->work_fetch_mutex, max(0, max-sg4::Engine::get_clock()));
-                client->work_fetch_cond->wait(lock);
+                if (were_waiting_on)
+                {
+                    client->work_fetch_cond->wait_until(lock, next_project_testing_period);
+                }
+                else
+                {
+                    client->work_fetch_cond->wait(lock);
+                }
 
                 // printf("SALGO DE EXIT 1: remaining %f, time %f\n", max-sg4::Engine::get_clock(), sg4::Engine::get_clock());
             }

@@ -24,6 +24,7 @@
 #include "components/types.hpp"
 #include "components/shared.hpp"
 #include "components/scheduler.hpp"
+#include "tools/execution_state.hpp"
 #include "client_side/data_client.hpp"
 #include "client_side/fetch_work.hpp"
 #include "client_side/execute_task.hpp"
@@ -280,6 +281,7 @@ void print_results()
         printf("  Work requests received: \t%'" PRId64 "\n", project.nwork_requests);
         printf("  Results created: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults, (double)project.nresults / project.nwork_requests * 100);
         printf("  Results sent: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_sent, (double)project.nresults_sent / project.nresults * 100);
+        printf("  Results cancelled: \t\t%'" PRId64 " (%0.1f%%)\n", project.ncancelled_results, (double)project.ncancelled_results / project.nresults_sent * 100);
         printf("  Results received: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_received, (double)project.nresults_received / project.nresults * 100);
         printf("  Results analyzed: \t\t%'" PRId64 " (%0.1f%%)\n", project.nresults_analyzed, (double)project.nresults_analyzed / project.nresults_received * 100);
         printf("  Results success: \t\t%'" PRId64 " (%0.1f%%)\n", project.nsuccess_results, (double)project.nsuccess_results / project.nresults_analyzed * 100);
@@ -803,6 +805,7 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
         proj->workunit_executed_task; // Queue with task's sizes
 
         proj->run_list_mutex = sg4::Mutex::create();
+        proj->tasks_swag_mutex = sg4::Mutex::create();
 
         proj->tasks_ready_mutex = sg4::Mutex::create();
         proj->tasks_ready_cv_is_empty = sg4::ConditionVariable::create();
@@ -938,10 +941,7 @@ static client_t client_new(int argc, char *argv[])
 
         std::string proj_name = bprintf("%s:%s\n", key.c_str(), client->name.c_str());
         proj->thread = sg4::Actor::create(proj_name, sg4::this_actor::get_host(), &client_execute_tasks, proj);
-        // {
-        //     printf("Error creating thread\n");
-        //     xbt_abort();
-        // }
+
         r += proj->priority;
         client->n_projects++;
     }
@@ -981,7 +981,7 @@ int client(int argc, char *argv[])
 
     // printf("Client %s finish at %e\n", client->name, sg4::Engine::get_clock());
 
-// Imprimir resultados de ejecucion del cliente
+// Print client execution results
 #if 0
 	xbt_dict_foreach(client->projects, cursor, key, proj) {
                 printf("Client %s:   Projet: %s    total tasks executed: %d  total tasks received: %d total missed: %d\n",
@@ -989,6 +989,10 @@ int client(int argc, char *argv[])
                         proj->total_tasks_received, proj->total_tasks_missed);
         }
 #endif
+    for (auto &[name, project_on_client] : client->projects)
+    {
+        SharedDatabase::_pdatabase[(int)project_on_client->number].ncancelled_results += project_on_client->total_tasks_missed;
+    }
 
     // Print client finish
     // printf("Client %s %f GLOPS finish en %g sec. %g horas.\t Working: %0.1f%% \t Not working %0.1f%%\n", client->name, client->power/1000000000.0, t0, t0/3600.0, available*100/(available+notavailable), (notavailable)*100/(available+notavailable));
@@ -1000,6 +1004,8 @@ int client(int argc, char *argv[])
     SharedDatabase::_group_info[client->group_number].mutex->unlock();
 
     // Finish client
+    sg4::this_actor::sleep_for(60);
+
     _oclient_mutex->lock();
     for (auto &[key, proj] : client->projects)
     {
@@ -1049,7 +1055,7 @@ void test_all(int argc, char *argv[], sg4::Engine &e)
     int i, days, hours, min;
     double t; // Program time
 
-    // sg4::Engine::set_config("network/model:IB");
+    // sg4::Engine::set_config("contexts/nthreads:1");
 
     t = (double)time(NULL);
 
@@ -1125,6 +1131,18 @@ void init_global_parameters(const parameters::Config &config)
     maxwt = (WARM_UP_TIME) * 3600;
 }
 
+void init_measurements(const parameters::Config &config)
+{
+    for (int i = 0; i < g_number_projects; ++i)
+    {
+        auto &project_config = config.server_side.sprojects[i];
+        std::string project_name = "Project" + std::to_string(project_config.snumber + 1);
+
+        g_measure_task_duration_per_project[project_name] = new thermometer::AggregateMeanSecondsToMinutes<double>();
+    }
+    g_measure_non_availability_duration = new thermometer::AggregateMeanSecondsToMinutes<double>();
+}
+
 /* Main function */
 int main(int argc, char *argv[])
 {
@@ -1140,15 +1158,41 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    auto config = parameters::read_from_file(argv[3]);
+    const auto config = parameters::read_from_file(argv[3]);
+#if 0
+    // check all parameters are read correctly
+    std::cout << "execute_state_log_path: " << config.experiment_run.timeline.execute_state_log_path << std::endl;
+    std::cout << "observable_clients: \n";
+    for (auto observable_client : config.experiment_run.timeline.observable_clients)
+    {
+        std::cout << '\t' << observable_client << '\n';
+    }
+    std::cout << "seed: " << config.experiment_run.seed_for_deterministic_run.value_or(0) << std::endl;
+#endif
+
     init_global_parameters(config);
 
     // set seeds of random generators
-    g_rndg = std::make_unique<boost::random::rand48>(time(0));
-    g_rndg_for_host_speed = std::make_unique<boost::random::rand48>(time(0));
-    g_rndg_for_disk_cap = std::make_unique<boost::random::rand48>(time(0));
-    g_rndg_for_data_client_avail = std::make_unique<boost::random::rand48>(time(0));
-    g_rndg_for_client_avail = std::make_unique<boost::random::rand48>(time(0));
+    if (config.experiment_run.seed_for_deterministic_run.has_value())
+    {
+        auto seed = *config.experiment_run.seed_for_deterministic_run;
+        g_rndg = std::make_unique<boost::random::rand48>(seed);
+        g_rndg_for_host_speed = std::make_unique<boost::random::rand48>(seed);
+        g_rndg_for_disk_cap = std::make_unique<boost::random::rand48>(seed);
+        g_rndg_for_data_client_avail = std::make_unique<boost::random::rand48>(seed);
+        g_rndg_for_client_avail = std::make_unique<boost::random::rand48>(seed);
+    }
+    else
+    {
+        g_rndg = std::make_unique<boost::random::rand48>(time(0));
+        g_rndg_for_host_speed = std::make_unique<boost::random::rand48>(time(0));
+        g_rndg_for_disk_cap = std::make_unique<boost::random::rand48>(time(0));
+        g_rndg_for_data_client_avail = std::make_unique<boost::random::rand48>(time(0));
+        g_rndg_for_client_avail = std::make_unique<boost::random::rand48>(time(0));
+    }
+
+    // set the clients whose timeline we would like to save (periods when they were non-available, idle or busy)
+    execution_state::Switcher::set_observable_clients(config.experiment_run.timeline.observable_clients);
 
     _total_power = 0;
     _total_available = 0;
@@ -1159,6 +1203,8 @@ int main(int argc, char *argv[])
     SharedDatabase::_dcserver_info = new s_dcserver_t[g_total_number_data_client_servers];
     SharedDatabase::_dclient_info = new s_dclient_t[g_total_number_data_clients];
     SharedDatabase::_group_info = new s_group_t[g_number_client_groups];
+
+    init_measurements(config);
 
     for (int i = 0; i < g_number_projects; i++)
     {
@@ -1308,4 +1354,29 @@ int main(int argc, char *argv[])
     _oclient_mutex = sg4::Mutex::create();
 
     test_all(argc, argv, e);
+
+    // save metrics and timelines that were recorded during the simulation
+    auto &experiment_run = config.experiment_run;
+    if (!experiment_run.timeline.execute_state_log_path.empty())
+    {
+        execution_state::Switcher::save_to_file(experiment_run.timeline.execute_state_log_path);
+    }
+    if (!experiment_run.measures.save_filepath.empty())
+    {
+        std::string metric_save_file = experiment_run.measures.save_filepath;
+        if (experiment_run.measures.clean_before_write)
+        {
+            std::ofstream file(metric_save_file);
+        }
+        for (int i = 0; i < g_number_projects; ++i)
+        {
+            auto &project_config = config.server_side.sprojects[i];
+            std::string project_name = "Project" + std::to_string(project_config.snumber + 1);
+
+            g_measure_task_duration_per_project[project_name]->save_series_to_file(
+                project_config.name + " project, average task execution (minutes)",
+                metric_save_file);
+        }
+        g_measure_non_availability_duration->save_series_to_file("non-availanility period (minutes)", metric_save_file);
+    }
 }
