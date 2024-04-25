@@ -140,10 +140,6 @@ int main(int argc, char *argv[])
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%lld\"/> ", project.delay_bound); // Deadline de workunit
 		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%d\"/> ", project.success_percentage); // Success percentage
-		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%d\"/> ", project.canonical_percentage); // Canonical percentage
-		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.input_file_size); // Tamanyo de workunit - 360 KB
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.disk_bw); // Disk speed
@@ -278,6 +274,8 @@ int main(int argc, char *argv[])
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", n_clients); // <!-- Number of clients -->
 				fprintf(fd, "\n");
+				fprintf(fd, "        <argument value=\"%d\"/>  ", n_clients - ndata_clients); // <!-- Number of ordinary clients -->
+				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", group.connection_interval); // <!-- ConnectionInterval -->
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", group.scheduling_interval); // <!-- SchedulingInterval -->
@@ -323,6 +321,11 @@ int main(int argc, char *argv[])
 					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.pnumber); // <!-- Project number -->
 					fprintf(fd, "\n");
 					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.priority); // <!-- Project priority -->
+					fprintf(fd, "\n");
+
+					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.success_percentage); // <!-- Project priority -->
+					fprintf(fd, "\n");
+					fprintf(fd, "        <argument value=\"%d\"/>", attached_project.canonical_percentage); // <!-- Project priority -->
 					fprintf(fd, "\n");
 				}
 			}

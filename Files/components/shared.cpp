@@ -10,12 +10,12 @@ double maxtt = (MAX_SIMULATED_TIME + WARM_UP_TIME) * 3600;
 double maxst = (MAX_SIMULATED_TIME) * 3600;
 double maxwt = (WARM_UP_TIME) * 3600;
 
-ProjectDatabase SharedDatabase::_pdatabase = {};     // Initialize the static member
-sserver_t SharedDatabase::_sserver_info = nullptr;   // Scheduling servers information
-dserver_t SharedDatabase::_dserver_info = nullptr;   // Data servers information
-dcserver_t SharedDatabase::_dcserver_info = nullptr; // Data client servers information
-dclient_t SharedDatabase::_dclient_info = nullptr;   // Data clients information
-group_t SharedDatabase::_group_info = nullptr;       // C
+ProjectDatabase SharedDatabase::_pdatabase = {};             // Initialize the static member
+sserver_t SharedDatabase::_sserver_info = nullptr;           // Scheduling servers information
+dserver_t SharedDatabase::_dserver_info = nullptr;           // Data servers information
+dcserver_t SharedDatabase::_dcserver_info = nullptr;         // Data client servers information
+std::vector<data_client> SharedDatabase::_dclient_info = {}; // Data clients information
+std::vector<client_group> SharedDatabase::_group_info = {};  // C
 
 std::unique_ptr<boost::rand48> g_rndg = nullptr;
 std::unique_ptr<boost::rand48> g_rndg_for_host_speed = nullptr;
@@ -77,4 +77,10 @@ AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workun
         project.wg_empty->notify_all();
 
     return result;
+}
+
+// todo: right now we don't support more then 10 groups
+bool the_same_client_group(const std::string &a, const std::string &b)
+{
+    return a[0] == 'd' || b[0] == 'd' || (a[0] == 'c' && b[0] == 'c' && a[1] == b[1]);
 }

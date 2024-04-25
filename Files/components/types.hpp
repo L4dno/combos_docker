@@ -77,6 +77,7 @@ struct request
     int32_t group_power;        // Client group power
     int64_t power;              // Client power
     double percentage;          // Percentage of project
+    std::string host_name;
 };
 
 /* Client reply to scheduling server */
@@ -215,6 +216,9 @@ struct ProjectInstanceOnClient
     char number;                // Project number (maximum 255)
     char on;                    // Project is working
 
+    char success_percentage;   // Percentage of success results
+    char canonical_percentage; // Percentage of success results that make up a consensus
+
     /* Data to control tasks and their execution */
 
     TaskT *running_task;  // which is the task that is running on thread */
@@ -322,14 +326,12 @@ struct ProjectDatabaseValue
 
     /* Results attributes */
 
-    char ifgl_percentage;      // Percentage of input files generated locally
-    char ifcd_percentage;      // Number of workunits that share the same input files
-    char averagewpif;          // Average workunits per input files
-    char success_percentage;   // Percentage of success results
-    char canonical_percentage; // Percentage of success results that make up a consensus
-    int64_t input_file_size;   // Size of the input files needed for a result associated with a workunit of this project
-    int64_t output_file_size;  // Size of the output files needed for a result associated with a workunit of this project
-    int64_t job_duration;      // Job length in FLOPS
+    char ifgl_percentage;     // Percentage of input files generated locally
+    char ifcd_percentage;     // Number of workunits that share the same input files
+    char averagewpif;         // Average workunits per input files
+    int64_t input_file_size;  // Size of the input files needed for a result associated with a workunit of this project
+    int64_t output_file_size; // Size of the output files needed for a result associated with a workunit of this project
+    int64_t job_duration;     // Job length in FLOPS
 
     /* Result statistics */
 
@@ -518,6 +520,8 @@ struct client_group
     std::vector<double> nb_param; // Non availability B parameter
     double max_power;             // Maximum host power
     double min_power;             // Minimum host power
+
+    int nfinished_oclients;
 };
 
 /* Data client ask for files */

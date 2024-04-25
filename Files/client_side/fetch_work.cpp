@@ -87,11 +87,11 @@ static void send_finished_work(client_t client, ProjectInstanceOnClient *proj)
         proj->total_tasks_checked++;
 
         // Executed task status [SUCCES, FAIL]
-        if (uniform_int(0, 99, *g_rndg) < project.success_percentage)
+        if (uniform_int(0, 99, *g_rndg) < proj->success_percentage)
         {
             ((reply_t)ssexecution_results->content)->status = SUCCESS;
             // Executed task value [CORRECT, INCORRECT]
-            if (uniform_int(0, 99, *g_rndg) < project.canonical_percentage)
+            if (uniform_int(0, 99, *g_rndg) < proj->canonical_percentage)
                 ((reply_t)ssexecution_results->content)->value = CORRECT;
             else
                 ((reply_t)ssexecution_results->content)->value = INCORRECT;
@@ -202,6 +202,7 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
     ((request_t)sswork_request->content)->group_power = SharedDatabase::_group_info[client->group_number].group_power;
     ((request_t)sswork_request->content)->power = client->power;
     ((request_t)sswork_request->content)->percentage = percentage;
+    ((request_t)sswork_request->content)->host_name = sg4::this_actor::get_host()->get_name();
 
     auto &scheduling_server_mailbox = project.scheduling_servers[uniform_int(0, project.nscheduling_servers - 1, *g_rndg)];
 
@@ -228,8 +229,11 @@ static int client_ask_for_work(client_t client, ProjectInstanceOnClient *proj, d
                 {
                     if (sswork_reply->input_files[i].empty())
                         continue;
-
                     std::string server_with_data = sswork_reply->input_files[i];
+                    if (!the_same_client_group(sg4::this_actor::get_host()->get_name(), server_with_data))
+                    {
+                        continue;
+                    }
 
                     // BORRAR (esta mal)
                     if (i < project.dcreplication)

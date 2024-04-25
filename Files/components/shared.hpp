@@ -37,18 +37,18 @@ extern std::unique_ptr<boost::rand48> g_rndg_for_data_client_avail;
 extern std::unique_ptr<boost::rand48> g_rndg_for_client_avail;
 
 extern std::unordered_map<std::string, thermometer::Measure<double> *> g_measure_task_duration_per_project;
-extern thermometer::Measure<double>* g_measure_non_availability_duration;
+extern thermometer::Measure<double> *g_measure_non_availability_duration;
 
 class SharedDatabase
 {
 public:
     /* Server info */
-    static ProjectDatabase _pdatabase; // Projects databases
-    static sserver_t _sserver_info;    // Scheduling servers information
-    static dserver_t _dserver_info;    // Data servers information
-    static dcserver_t _dcserver_info;  // Data client servers information
-    static dclient_t _dclient_info;    // Data clients information
-    static group_t _group_info;        // Client groups information
+    static ProjectDatabase _pdatabase;             // Projects databases
+    static sserver_t _sserver_info;                // Scheduling servers information
+    static dserver_t _dserver_info;                // Data servers information
+    static dcserver_t _dcserver_info;              // Data client servers information
+    static std::vector<data_client> _dclient_info; // Data clients information
+    static std::vector<client_group> _group_info;  // Client groups information
 };
 
 /*
@@ -65,3 +65,5 @@ void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms);
  *	Generate result
  */
 AssignedResult *generate_result(ProjectDatabaseValue &project, WorkunitT *workunit, int X);
+
+bool the_same_client_group(const std::string &a, const std::string &b);

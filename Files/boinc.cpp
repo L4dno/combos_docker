@@ -332,7 +332,7 @@ int init_database(int argc, char *argv[])
 {
     int i, project_number;
 
-    if (argc != 22)
+    if (argc != 20)
     {
         printf("Invalid number of parameter in init_database()\n");
         return 0;
@@ -355,14 +355,12 @@ int init_database(int argc, char *argv[])
     project.max_total_results = (int32_t)atoi(argv[11]);   // Maximum number of times a task must be sent
     project.max_success_results = (int32_t)atoi(argv[12]); // max_success_results
     project.delay_bound = (int64_t)atoll(argv[13]);        // Workunit deadline
-    project.success_percentage = (char)atoi(argv[14]);     // Success results percentage
-    project.canonical_percentage = (char)atoi(argv[15]);   // Canonical results percentage
-    project.input_file_size = (int64_t)atoll(argv[16]);    // Input file size
-    project.disk_bw = (int64_t)atoll(argv[17]);            // Disk bandwidth
-    project.ndata_servers = (char)atoi(argv[18]);          // Number of data servers
-    project.output_file_storage = (int32_t)atoi(argv[19]); // Output file storage [0 -> data servers, 1 -> data clients]
-    project.dsreplication = (int32_t)atoi(argv[20]);       // File replication in data servers
-    project.dcreplication = (int32_t)atoi(argv[21]);       // File replication in data clients
+    project.input_file_size = (int64_t)atoll(argv[14]);    // Input file size
+    project.disk_bw = (int64_t)atoll(argv[15]);            // Disk bandwidth
+    project.ndata_servers = (char)atoi(argv[16]);          // Number of data servers
+    project.output_file_storage = (int32_t)atoi(argv[17]); // Output file storage [0 -> data servers, 1 -> data clients]
+    project.dsreplication = (int32_t)atoi(argv[18]);       // File replication in data servers
+    project.dcreplication = (int32_t)atoi(argv[19]);       // File replication in data clients
     project.nmessages_received = 0;                        // Store number of messages rec.
     project.nresults = 0;                                  // Number of results created
     project.nresults_sent = 0;                             // Number of results sent
@@ -784,7 +782,7 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
 
     number_proj = atoi(argv[0]);
 
-    if (argc - 1 != number_proj * 3)
+    if (argc - 1 != number_proj * 5)
     {
         printf("Invalid number of parameters to client: %d. It should be %d\n", argc - 1, number_proj * 3);
         exit(1);
@@ -797,6 +795,9 @@ static void client_initialize_projects(client_t client, int argc, char **argv)
         proj->name = std::string(argv[index++]);
         proj->number = (char)atoi(argv[index++]);
         proj->priority = (char)atoi(argv[index++]);
+        proj->success_percentage = (char)atoi(argv[index++]);
+        proj->canonical_percentage = (char)atoi(argv[index++]);
+
         proj->on = 1;
 
         proj->answer_mailbox = proj->name + client->name;
@@ -857,6 +858,7 @@ static client_t client_new(int argc, char *argv[])
     {
         SharedDatabase::_group_info[group_number].group_power = (int32_t)sg4::this_actor::get_host()->get_speed();
         SharedDatabase::_group_info[group_number].n_clients = (int32_t)atoi(argv[index++]);
+        SharedDatabase::_group_info[group_number].n_ordinary_clients = (int32_t)atoi(argv[index++]);
         SharedDatabase::_group_info[group_number].connection_interval = atof(argv[index++]);
         SharedDatabase::_group_info[group_number].scheduling_interval = atof(argv[index++]);
         SharedDatabase::_group_info[group_number].max_power = atof(argv[index++]);
@@ -1013,16 +1015,20 @@ int client(int argc, char *argv[])
         {
             proj->thread->kill();
         }
-        SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients++;
+        SharedDatabase::_group_info[client->group_number].nfinished_oclients++;
         // printf("%s, Num_clients: %d, Total_clients: %d\n", client->name, num_clients[proj->number], nclients[proj->number]);
         //  Send finishing message to project_database
-        if (SharedDatabase::_pdatabase[(int)proj->number].nfinished_oclients == SharedDatabase::_pdatabase[(int)proj->number].nordinary_clients)
+        if (SharedDatabase::_group_info[client->group_number].nfinished_oclients == SharedDatabase::_group_info[client->group_number].n_ordinary_clients)
         {
             for (int i = 0; i < SharedDatabase::_pdatabase[(int)proj->number].ndata_clients; i++)
             {
                 msg2 = new s_dsmessage_t();
                 msg2->type = TERMINATION;
                 auto cl_n_mb = SharedDatabase::_pdatabase[(int)proj->number].data_clients[i];
+                if (!the_same_client_group(sg4::this_actor::get_host()->get_name(), cl_n_mb))
+                {
+                    continue;
+                }
 
                 sg4::Mailbox::by_name(cl_n_mb)->put(msg2, 1);
             }
@@ -1116,11 +1122,16 @@ void init_global_parameters(const parameters::Config &config)
     config.set_with_data_client_servers(g_total_number_data_client_servers);
     g_number_client_groups = config.client_side.n_groups;
     // there is no support for multiple groups
-    // todo: I start to doubt. Refs: I'm not user how SharedDatabase::_pdatabase[i].nclients is used.
+    // todo: I start to doubt. Refs: I'm not sure how SharedDatabase::_pdatabase[i].nclients is used.
     // But for a project I don't necessarily need to know it. Let's say, I'm not sure if it
     // is supported, so we assume it doesn't
-    g_total_number_clients = config.client_side.groups[0].n_clients;
-    g_total_number_data_clients = config.client_side.groups[0].ndata_clients;
+    g_total_number_clients = 0;
+    g_total_number_data_clients = 0;
+    for (auto &group : config.client_side.groups)
+    {
+        g_total_number_clients += group.n_clients;
+        g_total_number_data_clients += group.ndata_clients;
+    }
     g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_data_clients);
 
     MAX_SIMULATED_TIME = config.simulation_time;
@@ -1201,8 +1212,8 @@ int main(int argc, char *argv[])
     SharedDatabase::_sserver_info = new s_sserver_t[g_total_number_scheduling_servers];
     SharedDatabase::_dserver_info = new s_dserver_t[g_total_number_data_servers];
     SharedDatabase::_dcserver_info = new s_dcserver_t[g_total_number_data_client_servers];
-    SharedDatabase::_dclient_info = new s_dclient_t[g_total_number_data_clients];
-    SharedDatabase::_group_info = new s_group_t[g_number_client_groups];
+    SharedDatabase::_dclient_info.resize(g_total_number_data_clients);
+    SharedDatabase::_group_info.resize(g_number_client_groups);
 
     init_measurements(config);
 

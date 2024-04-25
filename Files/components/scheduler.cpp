@@ -54,6 +54,19 @@ std::vector<AssignedResult *> select_result(int project_number, request_t req)
         AssignedResult *result = nullptr;
         for (; current_results_it != project.current_results.end(); ++current_results_it)
         {
+            // several data clients can download this file. We check if client has one of
+            // them in its group
+            bool is_file_accessible_in_group = false;
+            for (auto input_file_holder : (*current_results_it)->workunit->input_files)
+            {
+                if (the_same_client_group(input_file_holder, req->host_name))
+                {
+                    is_file_accessible_in_group = true;
+                    break;
+                }
+            }
+            if (!is_file_accessible_in_group)
+                continue;
             if (unique_workunits.count((*current_results_it)->workunit->number) == 0)
             {
                 break;

@@ -60,8 +60,6 @@ namespace parameters
         int max_total_results;
         int max_success_results;
         long long delay_bound;
-        int success_percentage;
-        int canonical_percentage;
         int output_file_storage;
         int dsreplication;
         int dcreplication;
@@ -75,6 +73,9 @@ namespace parameters
         std::string lslatency;
         std::string ldbw;
         std::string ldlatency;
+
+        int success_percentage;
+        int canonical_percentage;
     };
 
     struct Group
@@ -267,8 +268,6 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
             emitter << YAML::Key << "max_total_results" << YAML::Value << sproject.max_total_results;
             emitter << YAML::Key << "max_success_results" << YAML::Value << sproject.max_success_results;
             emitter << YAML::Key << "delay_bound" << YAML::Value << sproject.delay_bound;
-            emitter << YAML::Key << "success_percentage" << YAML::Value << sproject.success_percentage;
-            emitter << YAML::Key << "canonical_percentage" << YAML::Value << sproject.canonical_percentage;
             emitter << YAML::Key << "output_file_storage" << YAML::Value << sproject.output_file_storage;
             emitter << YAML::Key << "dsreplication" << YAML::Value << sproject.dsreplication;
             emitter << YAML::Key << "dcreplication" << YAML::Value << sproject.dcreplication;
@@ -328,6 +327,10 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
                 emitter << YAML::Key << "lslatency" << YAML::Value << groupProject.lslatency;
                 emitter << YAML::Key << "ldbw" << YAML::Value << groupProject.ldbw;
                 emitter << YAML::Key << "ldlatency" << YAML::Value << groupProject.ldlatency;
+
+                emitter << YAML::Key << "success_percentage" << YAML::Value << groupProject.success_percentage;
+                emitter << YAML::Key << "canonical_percentage" << YAML::Value << groupProject.canonical_percentage;
+
                 emitter << YAML::EndMap;
             }
 
@@ -413,8 +416,6 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
                 sproject.max_total_results = sprojectNode["max_total_results"].as<int>();
                 sproject.max_success_results = sprojectNode["max_success_results"].as<int>();
                 sproject.delay_bound = sprojectNode["delay_bound"].as<long long>();
-                sproject.success_percentage = sprojectNode["success_percentage"].as<int>();
-                sproject.canonical_percentage = sprojectNode["canonical_percentage"].as<int>();
                 sproject.output_file_storage = sprojectNode["output_file_storage"].as<int>();
                 sproject.dsreplication = sprojectNode["dsreplication"].as<int>();
                 sproject.dcreplication = sprojectNode["dcreplication"].as<int>();
@@ -426,7 +427,7 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
             const YAML::Node &clientSideNode = root["client_side"];
             config.client_side.n_groups = clientSideNode["n_groups"].as<int>();
 
-            assert((config.client_side.n_groups == 1) && "code doesn't support multiple groups :(");
+            // assert((config.client_side.n_groups == 1) && "code doesn't support multiple groups :(");
 
             const YAML::Node &groupsNode = clientSideNode["groups"];
 
@@ -473,6 +474,9 @@ int g_total_number_ordinary_clients = (g_total_number_clients - g_total_number_d
                     groupProject.lslatency = groupProjectNode["lslatency"].as<std::string>();
                     groupProject.ldbw = groupProjectNode["ldbw"].as<std::string>();
                     groupProject.ldlatency = groupProjectNode["ldlatency"].as<std::string>();
+
+                    groupProject.success_percentage = groupProjectNode["success_percentage"].as<int>();
+                    groupProject.canonical_percentage = groupProjectNode["canonical_percentage"].as<int>();
 
                     group.gprojects.push_back(groupProject);
                 }

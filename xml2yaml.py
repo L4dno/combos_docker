@@ -15,6 +15,8 @@ with open("parameters.xml", "r") as xml_file:
                 param_name = line.split('<')[1].split('>')[0] 
                 if param_name in only_once:
                     prefix += '    '
+                    if param_name == 'group' and 'gproject' in only_once:
+                        only_once.remove('gproject')
                     continue
                 if param_name in ["sproject", "group", "gproject"]:
                     only_once.append(param_name)
