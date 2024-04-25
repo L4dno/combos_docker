@@ -40,6 +40,7 @@ I believe it won't work as it because my files are specific for my host. I can s
 - if a project didn't have work to do clients could freeze and never ever sent results or requested tasks. 
 - add several random generators, so that if during experiments you vary one part of the system and set seeds manually, other parts of the system remain deterministic. Previously, the generator was single and different ```gproject/priority``` parameters caused different availability periods, what was undesirable. 
 - suspend and resume msg_task when simulate down time of a client. Previously, a running task continues to be executed even if we simulated non-availability period.
+- there can be two types of hosts - ones that compute results with a few errors and ones with a lot of erros. Now it's possible to setup two clusters with different amount of erroneous results (see __parameters.xml__)
 
 
 # Work yet to be done
