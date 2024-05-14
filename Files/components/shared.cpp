@@ -37,17 +37,16 @@ void compute_server(int flops)
 /*
  * to free memory, we delete all completed asynchronous communications. It shouldn't affect the clocks in the simmulator.
  */
-void delete_completed_communications(std::vector<sg4::CommPtr> &pending_comms)
+void delete_completed_communications(sg4::ActivitySet &pending_comms)
 {
     do
     {
-        ssize_t ready_comm_ind = sg4::Comm::test_any(pending_comms);
-        if (ready_comm_ind == -1)
+        auto ready_comm_ptr = pending_comms.test_any();
+        if (ready_comm_ptr == nullptr)
         {
             break;
         }
-        swap(pending_comms.back(), pending_comms[ready_comm_ind]);
-        pending_comms.pop_back();
+        pending_comms.erase(ready_comm_ptr);
     } while (!pending_comms.empty());
 }
 

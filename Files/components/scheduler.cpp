@@ -207,7 +207,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
     int32_t scheduling_server_number;     // Scheduling_server_number
     double t0, t1;                        // Time measure
 
-    std::vector<sg4::CommPtr> _sscomm; // Asynchro communications storage (scheduling server with client)
+    sg4::ActivitySet _sscomm; // Asynchro communications storage (scheduling server with client)
 
     // Check number of arguments
     if (argc != 3)
@@ -300,7 +300,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
             // Store the asynchronous communication created in the dictionary
 
             delete_completed_communications(_sscomm);
-            _sscomm.push_back(comm);
+            _sscomm.push(comm);
 
             switch (msg->datatype)
             {
@@ -360,7 +360,7 @@ int scheduling_server_dispatcher(int argc, char *argv[])
         project.a_empty->notify_all();
     }
 
-    simgrid::s4u::Comm::wait_all(_sscomm);
+    _sscomm.wait_all();
 
     return 0;
 }

@@ -253,7 +253,7 @@ do
 done
 
 echo -n "Fix xmls... "
-cd simgrid-v3.35
+cd simgrid
 ./tools/simgrid_update_xml.pl ../Files/platform.xml
 ./tools/simgrid_update_xml.pl ../Files/deployment.xml
 cd ..

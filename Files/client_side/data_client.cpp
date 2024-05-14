@@ -378,7 +378,7 @@ int data_client_dispatcher(int argc, char *argv[])
 
     dclient_info = &SharedDatabase::_dclient_info[data_client_number]; // Data client info
 
-    std::vector<sg4::CommPtr> _dscomm;
+    sg4::ActivitySet _dscomm;
 
     while (1)
     {
@@ -427,7 +427,7 @@ int data_client_dispatcher(int argc, char *argv[])
 
             // Store the asynchronous communication created in the dictionary
             delete_completed_communications(_dscomm);
-            _dscomm.push_back(comm);
+            _dscomm.push(comm);
         }
 
         delete (msg);
@@ -440,7 +440,7 @@ int data_client_dispatcher(int argc, char *argv[])
         if (t0 < maxtt && t0 >= maxwt)
             dclient_info->time_busy += (t1 - t0);
     }
-    simgrid::s4u::Comm::wait_all(_dscomm);
+    _dscomm.wait_all();
 
     dclient_info->ask_for_files_mutex->lock();
     dclient_info->finish = 1;

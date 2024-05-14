@@ -19,9 +19,15 @@ I thought I could finally relax as I no longer saw SegFault, if there wasn't ano
 - Combos is more about clusters and they even can have \[data clients\] specially for input files.
 - combos simulate only 1-cpu hosts
 
-# 'Install' section
+# Installation
+Long story short:
+```
+sudo ./install.sh
+```
 
-I believe it won't work as it because my files are specific for my host. I can say, that I've installed boost and simgrid. Then compile the project in __build/__ via *cmake*. Also you need *yaml-cpp*.
+You can install boost and SimGrid. Source code of SimGrid should be cloned to the root
+directory by the name __simgrid__. It all can be done automatically by running __sudo ./install.sh__.
+Then create the directory __build/__ and compile the project via *cmake*.
 
 # Changes
 

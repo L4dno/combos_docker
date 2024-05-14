@@ -1212,7 +1212,7 @@ int main(int argc, char *argv[])
     SharedDatabase::_sserver_info = new s_sserver_t[g_total_number_scheduling_servers];
     SharedDatabase::_dserver_info = new s_dserver_t[g_total_number_data_servers];
     SharedDatabase::_dcserver_info = new s_dcserver_t[g_total_number_data_client_servers];
-    SharedDatabase::_dclient_info.resize(g_total_number_data_clients);
+    SharedDatabase::_dclient_info = std::vector<data_client>(g_total_number_data_clients);
     SharedDatabase::_group_info.resize(g_number_client_groups);
 
     init_measurements(config);

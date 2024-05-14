@@ -109,7 +109,7 @@ int data_server_dispatcher(int argc, char *argv[])
     dserver_info = &SharedDatabase::_dserver_info[server_number];               // Data server info pointer
     ProjectDatabaseValue &project = SharedDatabase::_pdatabase[project_number]; // Boinc server info pointer
 
-    std::vector<sg4::CommPtr> _dscomm; // Asynchro communications storage (data server with client)
+    sg4::ActivitySet _dscomm; // Asynchro communications storage (data server with client)
 
     while (1)
     {
@@ -159,7 +159,7 @@ int data_server_dispatcher(int argc, char *argv[])
             // Store the asynchronous communication created in the dictionary
 
             delete_completed_communications(_dscomm);
-            _dscomm.push_back(comm);
+            _dscomm.push(comm);
         }
 
         // Iteration end time
@@ -174,7 +174,7 @@ int data_server_dispatcher(int argc, char *argv[])
         req = NULL;
     }
 
-    simgrid::s4u::Comm::wait_all(_dscomm);
+    _dscomm.wait_all();
 
     return 0;
 }

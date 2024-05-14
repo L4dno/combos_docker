@@ -1,4 +1,4 @@
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/home/ubuntu/combos_cpp_shadow_new/simgrid-v3.35")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_HOME_DIRECTORY}/simgrid")
 
 find_package(SimGrid REQUIRED)
 
@@ -21,7 +21,7 @@ endif()
 set(Boost_USE_STATIC_LIBS OFF) 
 set(Boost_USE_MULTITHREADED ON)  
 set(Boost_USE_STATIC_RUNTIME OFF) 
-find_package(Boost 1.82.0 COMPONENTS context serialization) 
+find_package(Boost 1.82.0 COMPONENTS context) 
 
 
 if(Boost_FOUND)
@@ -43,7 +43,7 @@ if(Boost_FOUND)
                    components/data_client_server.cpp client_side/data_client.cpp
                    client_side/fetch_work.cpp client_side/execute_task.cpp
                    tools/execution_state.cpp)
-    target_link_libraries(boinc_sim_cpp ${SimGrid_LIBRARY} ${Boost_LIBRARIES} yaml-cpp boost_stacktrace_backtrace)
+    target_link_libraries(boinc_sim_cpp ${SimGrid_LIBRARY} ${Boost_LIBRARIES} yaml-cpp)
 
 endif()
 
