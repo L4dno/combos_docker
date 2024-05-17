@@ -164,9 +164,13 @@ done
 echo -n "Creating platform.xml... "
 python3 xml2yaml.py
 
+script_dir=$(dirname "$0")
+script_dir=$(cd "$script_dir" && pwd)
+
+
 ##### Platform ######
 cd build/Files
-PROJECT_SOURCE_DIR="/home/ubuntu/combos_cpp_shadow_new" ./create_platform ${arg1[@]}
+PROJECT_SOURCE_DIR="$script_dir" ./create_platform ${arg1[@]}
 
 echo "Done"
 
@@ -237,7 +241,7 @@ done
 ##### Deployment ######
 
 echo -n "Creating deployment.xml... "
-PROJECT_SOURCE_DIR="/home/ubuntu/combos_cpp_shadow_new" ./create_deployment ../../parameters.yaml ${arg2[@]}
+PROJECT_SOURCE_DIR="$script_dir" ./create_deployment ../../parameters.yaml ${arg2[@]}
 echo "Done"
 
 cd ../..
@@ -264,7 +268,7 @@ cat <<EOF >execute
 #!/bin/bash
 
 cd Files
-../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
+LD_LIBRARY_PATH="/opt/boost/lib/" ../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
 cd ..
 EOF
 
