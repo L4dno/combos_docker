@@ -22,12 +22,12 @@ I thought I could finally relax as I no longer saw SegFault, if there wasn't ano
 # Installation
 Long story short:
 ```
-sudo ./install.sh
+./install.sh
 ```
+It will install boost to __/opt/boost/__ (if not found in __/usr/lib/__), SimGrid to __.../combos_dir/simgrid/__ and 
+build project in __.../combos_dir/build/__ via ```cd build && cmake ..```
 
-You can install boost and SimGrid. Source code of SimGrid should be cloned to the root
-directory by the name __simgrid__. It all can be done automatically by running __sudo ./install.sh__.
-Then create the directory __build/__ and compile the project via *cmake*.
+Then you can write configurations in __parameters.xml__, generate all necessary files by ```./generator``` and run the simulation by```./execute```.
 
 # Changes
 

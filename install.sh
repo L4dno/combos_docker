@@ -60,6 +60,6 @@ function build_combos() {
     cd build && cmake .. && cd ..
 }
 
-find_or_install_boost
-install_simgrid
-build_combos
+find_or_install_boost || { echo 'failed to install boost' ; exit 1; }
+install_simgrid || { echo 'failed to install simgrid' ; exit 1; }
+build_combos || { echo 'failed to build combos' ; exit 1; }
