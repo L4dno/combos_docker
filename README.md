@@ -49,7 +49,7 @@ Then you can write configurations in __parameters.xml__, generate all necessary 
 - there can be two types of hosts - ones that compute results with a few errors and ones with a lot of erros. Now it's possible to setup two clusters with different amount of erroneous results (see __parameters.xml__)
 
 # Модификации
-- Проект переведен на С++
+- Проект переведен на С++, версия SimGrid - на последнюю,основной файл был разбит на несколько компонент.
 - Добавлено поле number_past_through_assimilator в workunit. Был workunit, который был удален до того, как валидатор или ассимилятор закончили с ними работу. В старом коде это была UB.
 - Дедлайн выполнения задач сначала рассчитывались как допустимая задержка + время создания, а не допустимая задержка + время отправленния на клиент.
 - В случае, если у проекта не было работы для выполнения, клиенты могли заморозиться и никогда не отправить результаты или запросить задачи.
