@@ -1,80 +1,96 @@
 # write parameters.xml file, gather output of simulator and save FLOPS into file for each hosts' power distribution
 from pathlib import Path
 import subprocess
+import copy
 
 experiment_dir = Path(__file__).parent
 
 proj_name_1 = "RakeSearchtype1e15@home"
 proj_name_2 = "RakeSearchtype2e13@home"
 
+class Project:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
-projects = [
-f"""<sproject>
-        <snumber>0</snumber>                <!-- Project number -->
-        <name>{proj_name_1}</name>                <!-- Project name -->
-        <nscheduling_servers>1</nscheduling_servers>    <!-- Number of scheduling servers -->
-        <ndata_servers>1</ndata_servers>        <!-- Number of data servers of the project -->
-        <ndata_client_servers>1</ndata_client_servers>  <!-- Number of data client servers -->
-        <server_pw>12000000000f</server_pw>        <!-- Server power in FLOPS -->
-        <disk_bw>167772160</disk_bw>            <!-- Disk speed in bytes/sec -->
-        <ifgl_percentage>100</ifgl_percentage>           <!-- Percentage of input files generated locally -->
-        <ifcd_percentage>100</ifcd_percentage>           <!-- Percentage of times clients must download new input files (they can't use old input files) -->
-        <averagewpif>1</averagewpif>            <!-- Average number of workunits that share the same input files -->
-        <input_file_size>1024</input_file_size>    <!-- Input file size in bytes -->
-        <task_fpops>10000000000</task_fpops>        <!-- Task duration in flops -->
-        <output_file_size>11000</output_file_size>    <!-- Answer size in bytes -->
-        <min_quorum>1</min_quorum>            <!-- Number of times a workunit must be received in order to validate it-->
-        <target_nresults>1</target_nresults>        <!-- Number of results to create initially -->
-        <max_error_results>8</max_error_results>    <!-- Max number of erroneous results -->
-        <max_total_results>10</max_total_results>    <!-- Max number of total results -->
-        <max_success_results>8</max_success_results>    <!-- Max number of success results -->
-        <delay_bound>64800</delay_bound>        <!-- Task deadline -->    
-        <success_percentage>98</success_percentage>    <!-- Percentage of success results -->
-        <canonical_percentage>84</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
-        <output_file_storage>0</output_file_storage>    <!-- Output file storage [0 -> data servers, 1 -> data clients] -->
-        <dsreplication>1</dsreplication>        <!-- Files replication in data servers -->
-        <dcreplication>1</dcreplication>        <!-- Files replication in data clients -->
-    <sproject/>""",
-f"""<sproject>
-        <snumber>1</snumber>                <!-- Project number -->
-        <name>{proj_name_2}</name>                <!-- Project name -->
-        <nscheduling_servers>1</nscheduling_servers>    <!-- Number of scheduling servers -->
-        <ndata_servers>1</ndata_servers>        <!-- Number of data servers of the project -->
-        <ndata_client_servers>1</ndata_client_servers>  <!-- Number of data client servers -->
-        <server_pw>12000000000f</server_pw>        <!-- Server power in FLOPS -->
-        <disk_bw>167772160</disk_bw>            <!-- Disk speed in bytes/sec -->
-        <ifgl_percentage>100</ifgl_percentage>           <!-- Percentage of input files generated locally -->
-        <ifcd_percentage>100</ifcd_percentage>           <!-- Percentage of times clients must download new input files (they can't use old input files) -->
-        <averagewpif>1</averagewpif>            <!-- Average number of workunits that share the same input files -->
-        <input_file_size>1024</input_file_size>    <!-- Input file size in bytes -->
-        <task_fpops>100000000000</task_fpops>        <!-- Task duration in flops -->
-        <output_file_size>11000</output_file_size>    <!-- Answer size in bytes -->
-        <min_quorum>1</min_quorum>            <!-- Number of times a workunit must be received in order to validate it-->
-        <target_nresults>1</target_nresults>        <!-- Number of results to create initially -->
-        <max_error_results>8</max_error_results>    <!-- Max number of erroneous results -->
-        <max_total_results>10</max_total_results>    <!-- Max number of total results -->
-        <max_success_results>8</max_success_results>    <!-- Max number of success results -->
-        <delay_bound>64800</delay_bound>        <!-- Task deadline -->    
-        <success_percentage>95</success_percentage>    <!-- Percentage of success results -->
-        <canonical_percentage>99</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
-        <output_file_storage>0</output_file_storage>    <!-- Output file storage [0 -> data servers, 1 -> data clients] -->
-        <dsreplication>1</dsreplication>        <!-- Files replication in data servers -->
-        <dcreplication>1</dcreplication>        <!-- Files replication in data clients -->
-    <sproject/>
-"""
-]
+    def __getattr__(self, name):
+        return self.__dict__.get(name, None)
 
-groups = ["""
+    def Serialize(self):
+        return f"""<sproject>
+                <snumber>{self.snumber or 0}</snumber>                <!-- Project number -->
+                <name>{self.name or "project1"}</name>                <!-- Project name -->
+                <nscheduling_servers>{self.nscheduling_servers or 1}</nscheduling_servers>    <!-- Number of scheduling servers -->
+                <ndata_servers>{self.ndata_servers or 1}</ndata_servers>        <!-- Number of data servers of the project -->
+                <ndata_client_servers>{self.ndata_client_servers or 1}</ndata_client_servers>  <!-- Number of data client servers -->
+                <server_pw>{self.server_pw or "12000000000f"}</server_pw>        <!-- Server power in FLOPS -->
+                <disk_bw>{self.disk_bw or 167772160}</disk_bw>            <!-- Disk speed in bytes/  -->
+                <ifgl_percentage>{self.ifgl_percentage or 100}</ifgl_percentage>           <!-- Percentage of input files generated locally -->
+                <ifcd_percentage>{self.ifcd_percentage or 100}</ifcd_percentage>           <!-- Percentage of times clients must download new input files (they can't use old input files) -->
+                <averagewpif>{self.averagewpif or 1}</averagewpif>            <!-- Average number of workunits that share the same input files -->
+                <input_file_size>{self.input_file_size or 1024}</input_file_size>    <!-- Input file size in bytes -->
+                <task_fpops>{self.task_fpops or 10000000000}</task_fpops>        <!-- Task duration in flops -->
+                <output_file_size>{self.output_file_size or 11000}</output_file_size>    <!-- Answer size in bytes -->
+                <min_quorum>{self.min_quorum or 1}</min_quorum>            <!-- Minimum quorum for a result to be considered valid -->
+                <target_nresults>{self.target_nresults or 1}</target_nresults>
+                <max_error_results>{self.max_error_results or 8}</max_error_results> <!-- Maximum number of error results -->
+                <max_total_results>{self.max_total_results or 10}</max_total_results>  <!-- Maximum number of results -->
+                <max_success_results>{self.max_success_results or 8}</max_success_results> <!-- Maximum number of successful results -->
+                <delay_bound>{self.delay_bound or 64800}</delay_bound>            <!-- Maximum delay for a result -->
+                <output_file_storage>{self.output_file_storage or 0}</output_file_storage>    <!-- Output file storage in bytes -->
+                <dsreplication>{self.dsreplication or 1}</dsreplication>        <!-- Data server replication factor -->
+                <dcreplication>{self.dcreplication or 1}</dcreplication>        <!-- Data client replication factor -->
+                <sproject/>
+                """
+
+class GroupProject:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+    def __getattr__(self, name):
+        return self.__dict__.get(name, None)
+    
+    def Serialize(self):
+        return f"""
+        <gproject>
+            <pnumber>{self.pnumber or 0}</pnumber>            <!-- Project number -->
+            <priority>{self.priority or 10}</priority>            <!-- Project priority -->
+            <lsbw>{self.lsbw or "10Gbps"}</lsbw>            <!-- Link bandwidth (between group and scheduling servers) -->
+            <lslatency>{self.lslatency or "50us"} </lslatency>        <!-- Link latency (between group and scheduling servers) -->
+            <ldbw>{self.ldbw or "2Mbps"} </ldbw>            <!-- Link bandwidth (between group and data servers) -->
+            <ldlatency>{self.ldlatency or "50us"}</latency>        <!-- Link latency (between group and data servers) -->    
+        
+            <success_percentage>{self.success_percentage or 98}</success_percentage> <!-- Percentage of successful results -->
+            <canonical_percentage>{self.canonical_percentage or 84}</canonical_percentage> <!-- Percentage of canonical results -->
+                
+        
+        <gproject/>
+        """
+        
+
+class Group:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        self.gprojects = []
+
+    def __getattr__(self, name):
+        return self.__dict__.get(name, None)
+    
+    def set_project(self, project: GroupProject):
+        self.gprojects.append(project)
+
+    def Serialize(self):
+        result = f"""
 <group>
-        <n_clients>2</n_clients>            <!-- Number of clients of the group -->
-        <ndata_clients>1</ndata_clients>        <!-- Number of data clients of the group -->
-        <connection_interval>60</connection_interval>    <!-- Connection interval -->    
-        <scheduling_interval>3600</scheduling_interval>    <!-- Scheduling interval -->
-        <gbw>50Mbps</gbw>                <!-- Cluster link bandwidth in bps -->
-        <glatency>7.3ms</glatency>            <!-- Cluster link latency -->
+        <n_clients>{self.n_clients or 10}</n_clients>            <!-- Number of clients of the group -->
+        <ndata_clients>{self.ndata_clients or 1}</ndata_clients>        <!-- Number of data clients of the group -->
+        <connection_interval>{self.connection_interval or 60}</connection_interval>    <!-- Connection interval -->    
+        <scheduling_interval>{self.scheduling_interval or 3600}</scheduling_interval>    <!-- Scheduling interval -->
+        <gbw>{self.gbw or "50Mbps"}</gbw>                <!-- Cluster link bandwidth in bps -->
+        <glatency>{self.glatency or "7.3ms"}</glatency>            <!-- Cluster link latency -->
         
            
-        <traces_file>/Traces/boom_host_cpu</traces_file>    <!-- Host power traces file-->
+        <traces_file>{self.traces_file or "/Traces/boom_host_cpu"}</traces_file>    <!-- Host power traces file-->
 
         <max_speed>117.71</max_speed>            <!-- Maximum host speed in GFlops -->
         <min_speed>0.07</min_speed>            <!-- Minumum host speed in GFlops -->
@@ -94,55 +110,45 @@ groups = ["""
         <nv_distri>8</nv_distri>            <!-- Non-availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential, 8=3-phase hyperx] -->
         <na_param>0.338,0.390,0.272</na_param>            <!-- A, devided by dots if there are many -->
         <nb_param>0.029,30.121,1.069</nb_param>            <!-- B, devided by dots if there are many -->
-        
-        
+        """
+        result += f"<att_projs>{len(self.gprojects)}</att_projs>            <!-- Number of projects attached -->"
 
-        <att_projs>2</att_projs>            <!-- Number of projects attached -->
-        <gproject>
-            <pnumber>0</pnumber>            <!-- Project number -->
-            <priority>{0}</priority>            <!-- Project priority -->
-            <lsbw>10Gbps</lsbw>            <!-- Link bandwidth (between group and scheduling servers) -->
-            <lslatency>50us</lslatency>        <!-- Link latency (between group and scheduling servers) -->
-            <ldbw>2Mbps</ldbw>            <!-- Link bandwidth (between group and data servers) -->
-            <ldlatency>50us</latency>        <!-- Link latency (between group and data servers) -->    
-        <gproject/>    
-        <gproject>
-            <pnumber>1</pnumber>            <!-- Project number -->
-            <priority>{1}</priority>            <!-- Project priority -->
-            <lsbw>10Gbps</lsbw>            <!-- Link bandwidth (between group and scheduling servers) -->
-            <lslatency>50us</lslatency>        <!-- Link latency (between group and scheduling servers) -->
-            <ldbw>2Mbps</ldbw>            <!-- Link bandwidth (between group and data servers) -->
-            <ldlatency>50us</latency>        <!-- Link latency (between group and data servers) -->    
-        <gproject/>    
-    <group/>
-"""
-]
+        for project in self.gprojects:
+            result += project.Serialize()
+        return result + "<group/>\n"
 
-log_path = "<execute_state_log_path> " + str(experiment_dir.resolve()) + "/execute_stat_{2}.csv </execute_state_log_path>"
-new_line = '\n'
+class ConfigurationFile:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        self.projects = []
+        self.clusters = []
+    
+    def add_project(self, project: Project):
+        self.projects.append(project)
+    def add_cluster(self, cluster: Group):
+        self.clusters.append(cluster)
 
-file_template =  f"""
-<simulation_time>4</simulation_time>                <!-- Simulation time in hours  -->
-<warm_up_time>0</warm_up_time>                <!-- Warm up time in hours -->
 
+    def __getattr__(self, name):
+        return self.__dict__.get(name, None)
+    def Serialize(self):
+        log_path = "<execute_state_log_path> " + str(experiment_dir.resolve()) + "/execute_stat_{2}.csv </execute_state_log_path>"
+        result = f"""
+<simulation_time>{self.simulation_time or 4}</simulation_time>                <!-- Simulation time in hours  -->
+<warm_up_time>{self.warm_up_time or 0}</warm_up_time>                <!-- Warm up time in hours -->
 <!-- Server side -->
 <server_side>
-    <n_projects>{len(projects)}</n_projects>                <!-- Number of projects -->
-    {new_line.join(projects)}
-<server_side/>
+    <n_projects>{len(self.projects)}</n_projects>                <!-- Number of projects -->
+"""
+        for project in self.projects:
+            result += project.Serialize()
+        result += f"<server_side/>\n<client_side>\n     <n_groups>{len(self.clusters)}</n_groups>                    <!-- Number of groups -->\n"
 
-<client_side>
-    <n_groups>{len(groups)}</n_groups>                    <!-- Number of groups -->
-    {new_line.join(groups)}    
-<client_side/>
+        for cluster in self.clusters:
+            result += cluster.Serialize()
+        result += f"""<client_side/>\n<experiment_run>
 
-<experiment_run>
-    <timeline>
-        {log_path}
-        <observable_clients> c10,c16 </observable_clients> <!-- format is "c[cluster_ind][client_ind],c[cluster_ind][client_ind]". Cluster's index starts with 1, when client's - with 0 -->
-    <timeline/>
-
-    <seed_for_deterministic_run> 6523446 </seed_for_deterministic_run>
+    <seed_for_deterministic_run> {self.seed_for_deterministic_run or 6523446} </seed_for_deterministic_run>
 
     <measures>
         <clean_before_write> true </clean_before_write>
@@ -150,11 +156,12 @@ file_template =  f"""
     <measures/>
 <experiment_run/>
 """
+        return result
 
 def run_in_schell(cmd: str):
     command = cmd
     try:
-        result = subprocess.run(command, shell=True, check=True,
+        result = subprocess.run(command, shell=True, check=False,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         print(result.stderr)
         return result.stdout
@@ -175,9 +182,24 @@ with open(experiment_dir / "result.csv", "w") as fout:
     for priority1 in range(1, SUM_PRIORITIES):
         priority2 = SUM_PRIORITIES - priority1
         print("priority1", priority1, priority2)
+
+        # form configuration file
+        config = ConfigurationFile(simulation_time = 48)
+        config.add_project(Project(name=proj_name_1, snumber= 0))
+        config.add_project(Project(name=proj_name_2, snumber=1))
+        cluster = Group()
+        cluster.set_project(GroupProject(priority=priority1, pnumber=0))
+        config.add_cluster(cluster)
+        cluster.set_project(GroupProject(priority=priority2, pnumber=1))
+        
+        cluster1 = Group(n_clients = 100)
+        cluster1.set_project(GroupProject(priority=priority1, pnumber=0))
+        cluster1.set_project(GroupProject(priority=priority2, pnumber=1))
+        config.add_cluster(cluster1)
+
         # form parameters file and all linked
         with open("parameters.xml", "w") as wfile:
-            print(file_template.format(priority1, priority2, f"{priority1}-{priority2}"), file=wfile)
+            print(config.Serialize(), file=wfile)
         run_in_schell("./generator")
 
 

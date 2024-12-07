@@ -18,6 +18,8 @@
 #include "rand.hpp"
 #include "parameters_struct_from_yaml.hpp"
 
+XBT_LOG_NEW_DEFAULT_CATEGORY(data_client, "The logging channel used in data_client");
+
 /*
  *	Disk access data clients simulation
  */
@@ -43,6 +45,7 @@ int data_client_ask_for_files(ask_for_files_t params)
     simgrid::s4u::CommPtr comm = NULL; // Asynchronous communication
                                        // double backoff = 300;
 
+    XBT_DEBUG("Start asking for files od %d project", params->project_number);
     // group_t group_info = NULL;			// Group information
     dclient_t dclient_info = NULL;         // Data client information
     double storage = 0, max_storage = 0;   // File storage in MB
@@ -58,7 +61,7 @@ int data_client_ask_for_files(ask_for_files_t params)
     sg4::Mailbox *self_mailbox = sg4::Mailbox::by_name(params->mailbox);
 
     max_storage = storage = (project_priority / dclient_info->sum_priority) * dclient_info->total_storage * KB * KB;
-
+    XBT_DEBUG("ksenia %d %f %d", project_priority, dclient_info->sum_priority, dclient_info->total_storage);
     ProjectDatabaseValue &project = SharedDatabase::_pdatabase[(int)project_number]; // Database
 
     // Reduce input file storage if output files are uploaded to data clients
@@ -67,6 +70,7 @@ int data_client_ask_for_files(ask_for_files_t params)
         max_storage /= 2.0;
         storage = max_storage;
     }
+    XBT_DEBUG("max storage is %f", max_storage);
 
     project.dcmutex->lock();
     for (i = 0; i < project.ndata_clients; i++)
@@ -79,6 +83,7 @@ int data_client_ask_for_files(ask_for_files_t params)
     }
     project.dcmutex->unlock();
 
+    XBT_DEBUG("start of the main cycle");
     while (sg4::Engine::get_clock() < maxtt)
     {
         dclient_info->ask_for_files_mutex->lock();
@@ -90,6 +95,7 @@ int data_client_ask_for_files(ask_for_files_t params)
         dclient_info->ask_for_files_mutex->unlock();
 
         // Delete local files when there are completed workunits
+        XBT_DEBUG("Delete local files, starting with %f when project input file is %ld", storage, project.input_file_size);
         while (storage < max_storage)
         {
             project.dcmutex->lock();
@@ -108,6 +114,7 @@ int data_client_ask_for_files(ask_for_files_t params)
 
         if (storage >= 0)
         {
+            XBT_DEBUG("ask for workunits");
             // backoff = 300;
 
             // ASK FOR WORKUNITS -> DATA CLIENT SERVER
@@ -117,11 +124,13 @@ int data_client_ask_for_files(ask_for_files_t params)
             dcsrequest->datatype = dcsmessage_content::SDcsrequestT;
             ((dcsrequest_t)dcsrequest->content)->answer_mailbox = self_mailbox->get_name();
 
-            auto data_client_server_mailbox = project.data_client_servers[uniform_int(0, project.ndata_client_servers - 1, *g_rndg)];
+            auto chosen_ind = uniform_int(0, project.ndata_client_servers - 1, *g_rndg);
+            auto data_client_server_mailbox = project.data_client_servers[chosen_ind];
 
             sg4::Mailbox::by_name(data_client_server_mailbox)->put(dcsrequest, 1);
 
             dcmessage_t dcreply = self_mailbox->get<dcmessage>();
+            XBT_DEBUG("Received message from data client server with %d workuntis", dcreply->nworkunits);
 
             if (dcreply->nworkunits > 0)
             {
@@ -131,6 +140,7 @@ int data_client_ask_for_files(ask_for_files_t params)
                     if (workunit->status != IN_PROGRESS)
                         continue;
 
+                    XBT_DEBUG("workunit with %s key in progress", key.c_str());
                     // Download input files (or generate them locally)
                     if (uniform_int(0, 99, *g_rndg) < (int)project.ifgl_percentage)
                     {
@@ -161,6 +171,8 @@ int data_client_ask_for_files(ask_for_files_t params)
                                     if (SharedDatabase::_dclient_info[server_number].working.load() == 0)
                                         continue;
                                 }
+
+                                XBT_DEBUG("get file from %s", server_with_data.c_str());
 
                                 dsmessage_t dsinput_file_request = new s_dsmessage_t();
                                 dsinput_file_request->type = REQUEST;
@@ -219,6 +231,8 @@ int data_client_ask_for_files(ask_for_files_t params)
             sg4::this_actor::sleep_for(60);
     }
 
+    XBT_DEBUG("finished");
+
     // Finish data client servers execution
     _dclient_mutex->lock();
     project.nfinished_dclients++;
@@ -276,12 +290,15 @@ int data_client_requests(int argc, char *argv[])
     dclient_info->sum_priority = 0;
 
     for (int i = 0; i < dclient_info->nprojects; i++)
-        dclient_info->sum_priority += (double)atof(group_info->proj_args[i * 3 + 3]);
+    {
+        dclient_info->sum_priority += (double)atof(group_info->proj_args[i * 5 + 3]);
+    }
     for (int i = 0; i < dclient_info->nprojects; i++)
     {
         ask_for_files_params = new s_ask_for_files_t();
-        ask_for_files_params->project_number = (char)atoi(group_info->proj_args[i * 3 + 2]);
-        ask_for_files_params->project_priority = (char)atoi(group_info->proj_args[i * 3 + 3]);
+        ask_for_files_params->project_number = (char)atoi(group_info->proj_args[i * 5 + 2]);
+        ask_for_files_params->project_priority = (char)atoi(group_info->proj_args[i * 5 + 3]);
+
         ask_for_files_params->group_info = group_info;
         ask_for_files_params->dclient_info = dclient_info;
         ask_for_files_params->mailbox = bprintf("%s%d", dclient_info->server_name.c_str(), ask_for_files_params->project_number);
@@ -447,4 +464,16 @@ int data_client_dispatcher(int argc, char *argv[])
     dclient_info->ask_for_files_mutex->unlock();
 
     return 0;
+}
+
+namespace for_testing
+{
+    void disk_access_test(int64_t size)
+    {
+        disk_access(size);
+    }
+    int data_client_ask_for_files_test(ask_for_files_t params)
+    {
+        return data_client_ask_for_files(params);
+    }
 }

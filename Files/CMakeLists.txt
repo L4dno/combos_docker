@@ -1,4 +1,4 @@
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_HOME_DIRECTORY}/simgrid")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_HOME_DIRECTORY}/simgrid-v3.35")
 
 find_package(SimGrid REQUIRED)
 
@@ -17,6 +17,12 @@ if(NOT yaml-cpp_POPULATED)
   add_subdirectory(${yaml-cpp_SOURCE_DIR} ${yaml-cpp_BINARY_DIR})
 endif()
 
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+FetchContent_MakeAvailable(googletest)
+
 
 set(Boost_USE_STATIC_LIBS OFF) 
 set(Boost_USE_MULTITHREADED ON)  
@@ -32,6 +38,7 @@ if(Boost_FOUND)
     include_directories(${SimGrid_INCLUDE_DIR})
 
     include_directories("${PROJECT_SOURCE_DIR}/Files")
+    include_directories(/opt/simgrid)
     set (CMAKE_CXX_STANDARD 20)
     link_directories(/usr/local/lib)
 
@@ -52,3 +59,22 @@ target_link_libraries(create_deployment yaml-cpp)
 
 add_executable(create_platform create_platform.cpp)
 
+
+
+enable_testing()
+
+add_executable(
+  main_tests
+  client_side/data_client_test.cpp
+  client_side/data_client.cpp
+  components/shared.cpp
+)
+target_link_libraries(
+  main_tests
+  GTest::gtest_main
+  yaml-cpp
+  ${SimGrid_LIBRARY}
+)
+
+include(GoogleTest)
+gtest_discover_tests(main_tests)

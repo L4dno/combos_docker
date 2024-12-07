@@ -1,5 +1,33 @@
 # combos
 
+# Installation
+Installation yet in the development, as I don't have a lot of experience in it. So you are welcome to create push-requests with it.
+
+At the current moment you may look in __./install.sh__ to understand how to setup the deps. 
+
+You can install boost and SimGrid. Source code of SimGrid should be cloned to the root
+directory by the name __simgrid__. 
+Then create the directory __build/__ and prepare the project via *cmake ..*.
+
+Feel free to write to me if you have problems with this.
+
+# Usage
+The file __generator__ is already included in the project. Run it and then __./execute__ which is generated after the first command. Configuration is in the __parameters.xml__. Please follow the format as the position of backslashes are important. I plan to migrate from xml to yaml, but it's not done yet as not critical.
+
+You also can look inside the directory __experiments/default/__ to modify __run.py__ and run experiments in a more convenient way than just save several __parameters.xml__. More examples will appear in the future.
+
+# Tests
+To write tests you need to compile the project (via __make__) and then go to the __build/Files__ and run __ctest__. In case in fail, you can turn the logs on (example in the __boinc.cpp__, ```xbt_log_control_set```).
+
+The initial project didn't have tests at all, and I started to add them only recently, so there are many code uncovered. You are welcome to contribute. It's my main direction of work for the nearest future.
+
+
+
+
+
+# Background
+
+
 The main difference from the original repository is that the code which simulates BOINC was switched from __boinc_simulator.c__ to __boinc.cpp__. The reason: SimGrid's newest version is 3.34, when combos compiles only with 3.11. I've tried several versions as well and I've tried to play with combos + 3.11v by changing __parameters.xml__. However, it either didn't compile or failed with a segmentation fault. So, the first attempt was only to switch the file's extension and fix all compilation errors.
 
 Besides the aforementioned reasons, the code in c requires a careful work with pointers. c++ provides a little bit more guarantees. At least it will shout.
@@ -18,16 +46,6 @@ I thought I could finally relax as I no longer saw SegFault, if there wasn't ano
 - In combos they use debt what must be depricated in the boinc. According to wiki scheduling priorities were introduced.
 - Combos is more about clusters and they even can have \[data clients\] specially for input files.
 - combos simulate only 1-cpu hosts
-
-# Installation
-Long story short:
-```
-sudo ./install.sh
-```
-
-You can install boost and SimGrid. Source code of SimGrid should be cloned to the root
-directory by the name __simgrid__. It all can be done automatically by running __sudo ./install.sh__.
-Then create the directory __build/__ and compile the project via *cmake*.
 
 # Changes
 

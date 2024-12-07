@@ -57,11 +57,7 @@ XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc 
 
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400 * 365 // One year without client activity, only to finish simulation for a while
-// #define WORK_FETCH_PERIOD 60           // Work fetch period
-// #define CREDITS_CPU_S 0.002315 // Credits per second (1 GFLOP machine)
-// #define REQUEST_SIZE 10 * KB           // Request size
-// #define REPLY_SIZE 10 * KB // Reply size
-#define MAX_BUFFER 300000 // Max buffer
+#define MAX_BUFFER 300000              // Max buffer
 
 int g_number_projects = 1;                  // Number of projects
 int g_total_number_scheduling_servers = 1;  // Number of scheduling servers
@@ -407,7 +403,7 @@ int init_database(int argc, char *argv[])
 WorkunitT *generate_workunit(ProjectDatabaseValue &project)
 {
     WorkunitT *workunit = new WorkunitT();
-    workunit->number = std::string(bprintf("%" PRId64, project.nworkunits));
+    workunit->number = std::to_string(project.nworkunits);
     workunit->status = IN_PROGRESS;
     workunit->ndata_clients = 0;
     workunit->ndata_clients_confirmed = 0;
@@ -460,6 +456,7 @@ int work_generator(int argc, char *argv[])
         // this is strange - double lock. probably meant w_mutex
         std::unique_lock lock(*(project.w_mutex));
 
+        // todo: search what this variables mean and extend the naming
         while (project.ncurrent_workunits >= MAX_BUFFER && !project.wg_end && !project.wg_dcs)
             project.wg_full->wait(lock);
 
@@ -469,19 +466,10 @@ int work_generator(int argc, char *argv[])
             break;
         }
 
-        // // BORRAR
-        // double t0, t1;
-        // t0 = sg4::Engine::get_clock();
-
         project.wg_dcs = 0;
 
         // Check if there are error results
         project.er_mutex->lock();
-
-        // // BORRAR
-        // t1 = sg4::Engine::get_clock();
-        // if (t1 - t0 > 1)
-        //     printf("%f: WF1 -> %f s\n", sg4::Engine::get_clock(), t1 - t0);
 
         // Regenerate result when error result
         if (project.ncurrent_error_results > 0)
@@ -514,11 +502,6 @@ int work_generator(int argc, char *argv[])
 
         project.er_mutex->unlock();
         lock.unlock();
-
-        // // BORRAR
-        // t1 = sg4::Engine::get_clock();
-        // if (t1 - t0 > 1)
-        //     printf("%f: WF3 -> %f s\n", sg4::Engine::get_clock(), t1 - t0);
     }
 
     return 0;
@@ -1160,6 +1143,9 @@ int main(int argc, char *argv[])
 
     int j;
     sg4::Engine e(&argc, argv);
+    // xbt_log_control_set("data_client.thresh:debug");
+    xbt_log_control_set("data_client.thresh:info");
+
     // MSG_init(&argc, argv);
 
     if (argc != 4)
