@@ -269,7 +269,7 @@ cat <<EOF >execute
 #!/bin/bash
 
 cd Files
-../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
+LD_LIBRARY_PATH="/opt/boost/lib/" ../build/Files/boinc_sim_cpp platform.xml deployment.xml ../parameters.yaml
 cd ..
 EOF
 

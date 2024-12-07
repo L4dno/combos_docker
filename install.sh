@@ -40,7 +40,7 @@ function find_or_install_boost() {
     echo "Boost not found. Installing Boost."
     wget https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.bz2
     tar --bzip2 -xf boost_1_82_0.tar.bz2
-    cd boost_1_82_0 && ./bootstrap.sh --prefix=/opt/boost && sudo ./b2 install --with-context
+    cd boost_1_82_0 && ./bootstrap.sh --prefix=/opt/boost && sudo ./b2 install --with-context && cd ..
 }
 
 
@@ -51,11 +51,15 @@ function install_simgrid() {
     make 
     echo "Installing SimGrid"
     sudo make install
+    cd ..
 }
 
-find_or_install_boost
-install_simgrid
+function build_combos() {
+    # prepare ComBoS to work
+    mkdir build
+    cd build && cmake .. && cd ..
+}
 
-# prepare ComBoS to work
-mkdir build
-cd build && cmake ..
+find_or_install_boost || { echo 'failed to install boost' ; exit 1; }
+install_simgrid || { echo 'failed to install simgrid' ; exit 1; }
+build_combos || { echo 'failed to build combos' ; exit 1; }
