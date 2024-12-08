@@ -38,15 +38,15 @@ int main(int argc, char *argv[])
 
 	/* BASICS */
 	fprintf(fd, "<?xml version='1.0'?>\n");
-	fprintf(fd, "<!DOCTYPE platform SYSTEM \"http://simgrid.gforge.inria.fr/simgrid.dtd\">\n");
-	fprintf(fd, "<platform version=\"3\">\n");
+	fprintf(fd, "<!DOCTYPE platform SYSTEM \"https://simgrid.org/simgrid.dtd\">\n");
+	fprintf(fd, "<platform version=\"4.1\">\n");
 
-	fprintf(fd, "<AS  id=\"AS0\"  routing=\"Full\">\n");
+	fprintf(fd, "<zone  id=\"AS0\"  routing=\"Full\">\n");
 
 	// Clients
 	for (i = 0; i < n_clusters; i++)
 	{
-		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"c%d\" suffix=\"\" radical=\"0-%s\"\n\t\tpower=\"1Gf\" bw=\"%s\" lat=\"%s\" router_id=\"router_cluster%d\"/>\n", i + 1, i + 1, argv[index + 2], argv[index + 1], argv[index], i + 1);
+		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"c%d\" suffix=\"\" radical=\"0-%s\"\n\t\tspeed=\"1Gf\" bw=\"%s\" lat=\"%s\" router_id=\"router_cluster%d\"/>\n", i + 1, i + 1, argv[index + 2], argv[index + 1], argv[index], i + 1);
 		index += 3;
 	}
 
@@ -57,26 +57,26 @@ int main(int argc, char *argv[])
 	// Servers
 	for (i = 0; i < n_projects; i++)
 	{
-		fprintf(fd, "\t<AS id=\"BE%d\" routing=\"None\">\n", i + 1);
-		fprintf(fd, "\t\t<host id=\"b%d\" power=\"%s\"/>\n", i, argv[index]);
-		fprintf(fd, "\t</AS>\n");
+		fprintf(fd, "\t<zone id=\"BE%d\" routing=\"None\">\n", i + 1);
+		fprintf(fd, "\t\t<host id=\"b%d\" speed=\"%s\"/>\n", i, argv[index]);
+		fprintf(fd, "\t</zone>\n");
 
 		char *power = argv[index++];
 		char *max = argv[index++];
 
 		// Scheduling servers
-		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"s%d\" suffix=\"\" radical=\"0-%s\"\n\t\tpower=\"%s\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 1, i + 1, max, power, n_clusters + i * 3 + 1);
+		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"s%d\" suffix=\"\" radical=\"0-%s\"\n\t\tspeed=\"%s\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 1, i + 1, max, power, n_clusters + i * 3 + 1);
 
 		// Data servers
-		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"d%d\" suffix=\"\" radical=\"0-%s\"\n\t\tpower=\"1Gf\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 2, i + 1, argv[index++], n_clusters + i * 3 + 2);
+		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"d%d\" suffix=\"\" radical=\"0-%s\"\n\t\tspeed=\"1Gf\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 2, i + 1, argv[index++], n_clusters + i * 3 + 2);
 
 		// Data client servers
-		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"t%d\" suffix=\"\" radical=\"0-%s\"\n\t\tpower=\"%s\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 3, i + 1, argv[index++], power, n_clusters + i * 3 + 3);
+		fprintf(fd, "\t<cluster id=\"cluster_%d\" prefix=\"t%d\" suffix=\"\" radical=\"0-%s\"\n\t\tspeed=\"%s\" bw=\"100Gbps\" lat=\"5ms\" router_id=\"router_cluster%d\"/>\n\n", n_clusters + i * 3 + 3, i + 1, argv[index++], power, n_clusters + i * 3 + 3);
 	}
 
-	fprintf(fd, "\t<AS id=\"AS%d\" routing=\"None\">\n", 1);
-	fprintf(fd, "\t\t<host id=\"r0\" power=\"1f\"/>\n");
-	fprintf(fd, "\t</AS>\n");
+	fprintf(fd, "\t<zone id=\"AS%d\" routing=\"None\">\n", 1);
+	fprintf(fd, "\t\t<host id=\"r0\" speed=\"1f\"/>\n");
+	fprintf(fd, "\t</zone>\n");
 
 	fprintf(fd, "\n");
 
@@ -101,27 +101,27 @@ int main(int argc, char *argv[])
 	{
 		for (j = 0; j < att_proj[i]; j++, index++)
 		{
-			fprintf(fd, "\t<ASroute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 1, i + 1, n_clusters + atoi(argv[index]) * 3 + 1);
+			fprintf(fd, "\t<zoneRoute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 1, i + 1, n_clusters + atoi(argv[index]) * 3 + 1);
 			fprintf(fd, "\t\t<link_ctn id=\"l%d\"/>\n", k++);
-			fprintf(fd, "\t</ASroute> \n");
-			fprintf(fd, "\t<ASroute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 2, i + 1, n_clusters + atoi(argv[index]) * 3 + 2);
+			fprintf(fd, "\t</zoneRoute> \n");
+			fprintf(fd, "\t<zoneRoute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 2, i + 1, n_clusters + atoi(argv[index]) * 3 + 2);
 			fprintf(fd, "\t\t<link_ctn id=\"l%d\"/>\n", k++);
-			fprintf(fd, "\t</ASroute> \n");
-			fprintf(fd, "\t<ASroute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 3, i + 1, n_clusters + atoi(argv[index]) * 3 + 3);
+			fprintf(fd, "\t</zoneRoute> \n");
+			fprintf(fd, "\t<zoneRoute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", i + 1, n_clusters + atoi(argv[index]) * 3 + 3, i + 1, n_clusters + atoi(argv[index]) * 3 + 3);
 			fprintf(fd, "\t\t<link_ctn id=\"l%d\"/>\n", k - 2);
-			fprintf(fd, "\t</ASroute> \n");
+			fprintf(fd, "\t</zoneRoute> \n");
 		}
 	}
 
 	// Scheduling servers <-> Data servers
 	for (i = 0; i < n_projects; i++, k++)
 	{
-		fprintf(fd, "\t<ASroute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", n_clusters + i * 3 + 1, n_clusters + i * 3 + 2, n_clusters + i * 3 + 1, n_clusters + i * 3 + 2);
+		fprintf(fd, "\t<zoneRoute src=\"cluster_%d\" dst=\"cluster_%d\" gw_src=\"router_cluster%d\" gw_dst=\"router_cluster%d\">\n", n_clusters + i * 3 + 1, n_clusters + i * 3 + 2, n_clusters + i * 3 + 1, n_clusters + i * 3 + 2);
 		fprintf(fd, "\t\t<link_ctn id=\"l%d\"/>\n", k);
-		fprintf(fd, "\t</ASroute> \n");
+		fprintf(fd, "\t</zoneRoute> \n");
 	}
 
-	fprintf(fd, "</AS>\n");
+	fprintf(fd, "</zone>\n");
 
 	/* END */
 	fprintf(fd, "</platform>\n");

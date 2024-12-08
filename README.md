@@ -1,42 +1,38 @@
 # combos
 
 # Installation
-Installation yet in the development, as I don't have a lot of experience in it. So you are welcome to create push-requests with it.
-
-At the current moment you may look in __./install.sh__ to understand how to setup the deps. 
-
-You can install boost and SimGrid. Source code of SimGrid should be cloned to the root
-directory by the name __simgrid__. 
-Then create the directory __build/__ and prepare the project via *cmake ..*.
+You need 
+1. CMake 3.11 or later
+2. Boost 1.82, __context__ component
+3. Clone this repository 
+4. Create the directory __build/__ and run "cmake .." from it.
+5. Build the project via "make". SimGrid will be automatically downloaded and built, so it can take time during the first run of the command.
 
 Feel free to write to me if you have problems with this.
 
 # Usage
-The file __generator__ is already included in the project. Run it and then __./execute__ which is generated after the first command. Configuration is in the __parameters.xml__. Please follow the format as the position of backslashes are important. I plan to migrate from xml to yaml, but it's not done yet as not critical.
+The file __generator__ is already included in the project. Run it and then __./execute__ which is generated after the first command. Configuration is in the __parameters.xml__. Please follow the format as the positions of backslashes are important. I plan to migrate from xml to yaml, but it's not done yet as not critical.
 
 You also can look inside the directory __experiments/default/__ to modify __run.py__ and run experiments in a more convenient way than just save several __parameters.xml__. More examples will appear in the future.
 
 # Tests
-To write tests you need to compile the project (via __make__) and then go to the __build/Files__ and run __ctest__. In case in fail, you can turn the logs on (example in the __boinc.cpp__, ```xbt_log_control_set```).
+To write tests, you need to build the project (via __make__) and then go to the __build/Files__ and run __ctest__. In case of failure, you can turn the logs on (example in the __boinc.cpp__, ```xbt_log_control_set```).
 
-The initial project didn't have tests at all, and I started to add them only recently, so there are many code uncovered. You are welcome to contribute. It's my main direction of work for the nearest future.
-
-
-
+The initial project didn't have tests at all, and I started to add them only recently, so there is much code uncovered. You are welcome to contribute. It's my main direction of work for the nearest future.
 
 
 # Background
 
 
-The main difference from the original repository is that the code which simulates BOINC was switched from __boinc_simulator.c__ to __boinc.cpp__. The reason: SimGrid's newest version is 3.34, when combos compiles only with 3.11. I've tried several versions as well and I've tried to play with combos + 3.11v by changing __parameters.xml__. However, it either didn't compile or failed with a segmentation fault. So, the first attempt was only to switch the file's extension and fix all compilation errors.
+The main difference from the original repository is that the code which simulates BOINC was switched from __boinc_simulator.c__ to __boinc.cpp__. The reason: SimGrid's newest version is 3.34, when combos compiles only with 3.11. I've tried several versions as well and attempted to play with combos + 3.11v by changing __parameters.xml__. However, it either didn't compile or failed with a segmentation fault. So, the first attempt was only to switch the file's extension and fix all compilation errors.
 
 Besides the aforementioned reasons, the code in c requires a careful work with pointers. c++ provides a little bit more guarantees. At least it will shout.
 
-Apparently, the new code generates way too different results than the original version if I run them with the original __parameters.xml__. Even after I fixed all suspicious places I'd found in the old code, nothing changed. The new version gives about 56 GFlops and the old one - about 220 GFlops in average. It looks like the problem is in simgrid and only because of the engine's work the old code produces more tasks or more frequently.
+Apparently, the new code generates results that are significantly different from the original version if I run them with the original __parameters.xml__. Even after I fixed all suspicious places I'd found in the old code, nothing changed. The new version gives about 56 GFlops and the old one - about 220 GFlops in average. It looks like the problem is in simgrid and only because of the engine's work the old code produces more tasks or more frequently.
 
-At some moment I gave up and decoupled new version from the old one, what resulted in working only under c++ code and a plan to reproduce the "Validation of the simulator" section from the article about combos.
+At some moment, I gave up and decoupled new version from the old one, what resulted in working only under c++ code and a plan to reproduce the "Validation of the simulator" section from the article about combos.
 
-To understand the code and in general be able to alter it, I've split 4000 loc into several files. __components__ is about server side and __client_side__ is about clients. (Naming could be changed). After I finish the work on another branch, there will be explanations what each component or part is about.
+To understand the code and generally be able to alter it, I've split 4000 loc into several files. __components__ is about server side and __client_side__ is about clients. (Naming could be changed). After I finish the work on another branch, there will be explanations what each component or part is about.
 
 I thought I could finally relax as I no longer saw SegFault, if there wasn't another nuance. I tried to add a new project to __parameters.xml__ and program failed once again. After all, I added __xml2yaml.py__ that converts __parameters.xml__ into __parameters.yaml__ and pass it to the program. It all works but there is advice to alter __parameters.xml__ carefully, keeping the same format of tags as it has now. To proof the correctness, I ran script that summarizes outputs of the programs' versions and calculates absolute and relative errors. The result is in __compare_results.json__. The relative errors are small (<= 7% in major) expect for "DC. Number of downloads from data server 1" but it has small values so it's okay. 
 

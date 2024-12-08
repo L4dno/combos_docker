@@ -11,7 +11,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
-#include "xbt/sysdep.h"
 #include "parameters_struct_from_yaml.hpp"
 
 class TraceParameter
@@ -101,10 +100,10 @@ int main(int argc, char *argv[])
 
 	/* BASICS */
 	fprintf(fd, "<?xml version='1.0'?>\n");
-	fprintf(fd, "<!DOCTYPE platform SYSTEM \"http://simgrid.gforge.inria.fr/simgrid.dtd\">\n");
-	fprintf(fd, "<platform version=\"3\">\n");
+	fprintf(fd, "<!DOCTYPE platform SYSTEM \"https://simgrid.org/simgrid.dtd\">\n");
+	fprintf(fd, "<platform version=\"4.1\">\n");
 
-	fprintf(fd, "   <process host=\"r0\" function=\"show_progress\" />");
+	fprintf(fd, "   <actor host=\"r0\" function=\"show_progress\" />");
 	fprintf(fd, "\n");
 
 	int n_projects = config.server_side.n_projects;
@@ -112,7 +111,7 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < n_projects; i++)
 	{
 		auto project = config.server_side.sprojects[i];
-		fprintf(fd, "   <process host=\"b%d\" function=\"init_database\"> ", project.snumber);
+		fprintf(fd, "   <actor host=\"b%d\" function=\"init_database\"> ", project.snumber);
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
@@ -152,89 +151,89 @@ int main(int argc, char *argv[])
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.dcreplication); // Files replication in data clients
 		fprintf(fd, "\n");
-		fprintf(fd, "   </process> ");
+		fprintf(fd, "   </actor> ");
 		fprintf(fd, "\n");
 
-		fprintf(fd, "   <process host=\"b%d\" function=\"work_generator\"> ", project.snumber);
+		fprintf(fd, "   <actor host=\"b%d\" function=\"work_generator\"> ", project.snumber);
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
-		fprintf(fd, "   </process> ");
+		fprintf(fd, "   </actor> ");
 		fprintf(fd, "\n");
-		fprintf(fd, "   <process host=\"b%d\" function=\"validator\" >", project.snumber);
-		fprintf(fd, "\n");
-		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
-		fprintf(fd, "\n");
-		fprintf(fd, "   </process> ");
-		fprintf(fd, "\n");
-		fprintf(fd, "   <process host=\"b%d\" function=\"assimilator\" >", project.snumber);
+		fprintf(fd, "   <actor host=\"b%d\" function=\"validator\" >", project.snumber);
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 		fprintf(fd, "\n");
-		fprintf(fd, "   </process> ");
+		fprintf(fd, "   </actor> ");
+		fprintf(fd, "\n");
+		fprintf(fd, "   <actor host=\"b%d\" function=\"assimilator\" >", project.snumber);
+		fprintf(fd, "\n");
+		fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
+		fprintf(fd, "\n");
+		fprintf(fd, "   </actor> ");
 		fprintf(fd, "\n");
 
 		// Scheduling servers
 		for (int j = 0; j < project.nscheduling_servers; j++)
 		{
-			fprintf(fd, "   <process host=\"s%d%d\" function=\"scheduling_server_requests\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"s%d%d\" function=\"scheduling_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", scheduling_server_number); // Numero del servidor
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 
-			fprintf(fd, "   <process host=\"s%d%d\" function=\"scheduling_server_dispatcher\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"s%d%d\" function=\"scheduling_server_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", scheduling_server_number++); // Numero del servidor
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 		}
 
 		// Data servers
 		for (int j = 0; j < project.ndata_servers; j++, l++)
 		{
-			fprintf(fd, "   <process host=\"d%d%d\" function=\"data_server_requests\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"d%d%d\" function=\"data_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", l);
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 
-			fprintf(fd, "   <process host=\"d%d%d\" function=\"data_server_dispatcher\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"d%d%d\" function=\"data_server_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", l);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber);
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 		}
 
 		// Data client servers
 		for (int j = 0; j < project.ndata_client_servers; j++)
 		{
-			fprintf(fd, "   <process host=\"t%d%d\" function=\"data_client_server_requests\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"t%d%d\" function=\"data_client_server_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_client_server_number); // Numero del servidor
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 
-			fprintf(fd, "   <process host=\"t%d%d\" function=\"data_client_server_dispatcher\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"t%d%d\" function=\"data_client_server_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", project.snumber); // Numero del proyecto
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_client_server_number++); // Numero del servidor
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 		}
 	}
@@ -268,7 +267,7 @@ int main(int argc, char *argv[])
 		{
 			if (j == 0)
 			{
-				fprintf(fd, "   <process host=\"c%d%d\" function=\"client\"> ", i + 1, j);
+				fprintf(fd, "   <actor host=\"c%d%d\" function=\"client\"> ", i + 1, j);
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", i); // <!-- Cluster number-->
 				fprintf(fd, "\n");
@@ -331,20 +330,20 @@ int main(int argc, char *argv[])
 			}
 			else
 			{
-				fprintf(fd, "   <process host=\"c%d%d\" function=\"client\"> ", i + 1, j);
+				fprintf(fd, "   <actor host=\"c%d%d\" function=\"client\"> ", i + 1, j);
 				fprintf(fd, "\n");
 				fprintf(fd, "        <argument value=\"%d\"/>  ", i); // <!-- Cluster number-->
 				fprintf(fd, "\n");
 				write_trace_parameter(fd, host_power_generator, parameters::no_set_host_power); // <!-- Host power -->
 			}
 
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 		}
 
 		for (; j < n_clients; j++)
 		{
-			fprintf(fd, "   <process host=\"c%d%d\" function=\"data_client_requests\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"c%d%d\" function=\"data_client_requests\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", i); // Cluster number
 			fprintf(fd, "\n");
@@ -352,16 +351,16 @@ int main(int argc, char *argv[])
 			fprintf(fd, "\n");
 			write_trace_parameter(fd, disk_capacity_generator, parameters::no_set_disk_capacity); // <!-- Disk capacity -->
 
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 
-			fprintf(fd, "   <process host=\"c%d%d\" function=\"data_client_dispatcher\"> ", i + 1, j);
+			fprintf(fd, "   <actor host=\"c%d%d\" function=\"data_client_dispatcher\"> ", i + 1, j);
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", i); // Cluster number
 			fprintf(fd, "\n");
 			fprintf(fd, "           <argument value=\"%d\"/> ", data_clients++); // Data client number
 			fprintf(fd, "\n");
-			fprintf(fd, "   </process> ");
+			fprintf(fd, "   </actor> ");
 			fprintf(fd, "\n");
 		}
 	}

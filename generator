@@ -114,11 +114,11 @@ declare -a arg4 # boinc_simulator args2
 
 arg1[j++]=${n_groups}
 
-# BORRAR
-cd Traces/lhc/
-./command_unsort
-cd ../..
-# FIN BORRAR
+# # BORRAR
+# cd Traces/lhc/
+# ./command_unsort
+# cd ../..
+# # FIN BORRAR
 
 # Cluster arguments
 for ((i=0; i<n_groups; i++))
@@ -255,13 +255,6 @@ do
   	((arg4[${pnumber[$k]}]+=${ndata_clients[$i]}))
   done
 done
-
-echo -n "Fix xmls... "
-# todo: remove this
-cd simgrid-v3.35
-./tools/simgrid_update_xml.pl ../Files/platform.xml
-./tools/simgrid_update_xml.pl ../Files/deployment.xml
-cd ..
 
 # //--cfg=contexts/stack_size:16
 echo -n "Creating execute.sh... "

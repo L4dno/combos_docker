@@ -1,8 +1,17 @@
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_HOME_DIRECTORY}/simgrid-v3.35")
-
-find_package(SimGrid REQUIRED)
-
 include(FetchContent)
+
+include(ExternalProject)
+
+# SimGrid
+ExternalProject_Add(simgrid_external
+  GIT_REPOSITORY    https://github.com/simgrid/simgrid.git
+  GIT_TAG           v3.35
+  CMAKE_ARGS        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/simgrid
+  BUILD_ALWAYS      0
+)
+# Set up SimGrid include and lib directories
+set(SIMGRID_INCLUDE_DIR ${CMAKE_BINARY_DIR}/simgrid/include)
+set(SIMGRID_LIB_DIR ${CMAKE_BINARY_DIR}/simgrid/lib)
 
 FetchContent_Declare(
   yaml-cpp
@@ -33,12 +42,7 @@ find_package(Boost 1.82.0 COMPONENTS context)
 if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS}) 
 
-
-# find_package(SimGrid REQUIRED)
-    include_directories(${SimGrid_INCLUDE_DIR})
-
     include_directories("${PROJECT_SOURCE_DIR}/Files")
-    include_directories(/opt/simgrid)
     set (CMAKE_CXX_STANDARD 20)
     link_directories(/usr/local/lib)
 
@@ -50,8 +54,12 @@ if(Boost_FOUND)
                    components/data_client_server.cpp client_side/data_client.cpp
                    client_side/fetch_work.cpp client_side/execute_task.cpp
                    tools/execution_state.cpp)
-    target_link_libraries(boinc_sim_cpp ${SimGrid_LIBRARY} ${Boost_LIBRARIES} yaml-cpp)
+    target_link_libraries(boinc_sim_cpp ${SIMGRID_LIB_DIR}/libsimgrid.so ${Boost_LIBRARIES} yaml-cpp)
 
+    # Add include directories
+target_include_directories(boinc_sim_cpp PRIVATE ${SIMGRID_INCLUDE_DIR})
+
+add_dependencies(boinc_sim_cpp simgrid_external)
 endif()
 
 add_executable(create_deployment create_deployment.cpp)
@@ -73,8 +81,11 @@ target_link_libraries(
   main_tests
   GTest::gtest_main
   yaml-cpp
-  ${SimGrid_LIBRARY}
+  ${SIMGRID_LIB_DIR}/libsimgrid.so
 )
+target_include_directories(main_tests PRIVATE ${SIMGRID_INCLUDE_DIR})
+add_dependencies(main_tests simgrid_external)
+
 
 include(GoogleTest)
 gtest_discover_tests(main_tests)
