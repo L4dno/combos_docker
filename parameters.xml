@@ -65,7 +65,7 @@
         <glatency>7.3ms</glatency>            <!-- Cluster link latency -->
         
            
-        <traces_file>/Traces/boom_host_cpu</traces_file>    <!-- Host power traces file-->
+        <traces_file>/app/Traces/boom_host_cpu</traces_file>    <!-- Host power traces file-->
 
         <max_speed>117.71</max_speed>            <!-- Maximum host speed in GFlops -->
         <min_speed>0.07</min_speed>            <!-- Minumum host speed in GFlops -->
@@ -73,7 +73,7 @@
         <pa_param>0.0534</pa_param>            <!-- A -->
         <pb_param>-1</pb_param>                <!-- B -->
 
-        <db_traces_file>/Traces/storage/boom_disk_capacity</db_traces_file>    <!-- Host power traces file -->
+        <db_traces_file>/app/Traces/storage/boom_disk_capacity</db_traces_file>    <!-- Host power traces file -->
         <db_distri>2</db_distri>            <!-- Disk speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
         <da_param>21.086878916910564</da_param>            <!-- A -->
         <db_param>159.1597190181666</db_param>                <!-- B -->
@@ -124,7 +124,7 @@
         <glatency>7.3ms</glatency>            <!-- Cluster link latency -->
         
            
-        <traces_file>/Traces/boom_host_cpu</traces_file>    <!-- Host power traces file-->
+        <traces_file>/app/Traces/boom_host_cpu</traces_file>    <!-- Host power traces file-->
 
         <max_speed>117.71</max_speed>            <!-- Maximum host speed in GFlops -->
         <min_speed>0.07</min_speed>            <!-- Minumum host speed in GFlops -->
@@ -132,7 +132,7 @@
         <pa_param>0.0534</pa_param>            <!-- A -->
         <pb_param>-1</pb_param>                <!-- B -->
 
-        <db_traces_file>/Traces/storage/boom_disk_capacity</db_traces_file>    <!-- Host power traces file -->
+        <db_traces_file>/app/Traces/storage/boom_disk_capacity</db_traces_file>    <!-- Host power traces file -->
         <db_distri>2</db_distri>            <!-- Disk speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
         <da_param>21.086878916910564</da_param>            <!-- A -->
         <db_param>159.1597190181666</db_param>                <!-- B -->
@@ -180,7 +180,7 @@
 
     <measures>
         <clean_before_write> true </clean_before_write>
-        <save_filepath> /home/ubuntu/combos_cpp_shadow_new/experiments/default/save_file.txt </save_filepath>
+        <save_filepath> /app/experiments/save_file.txt </save_filepath>
     <measures/>
 <experiment_run/>
 

@@ -2,14 +2,16 @@ FROM leimao/boost:1.84.0
 
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/boost.conf && ldconfig
 
-WORKDIR /combos
+WORKDIR /app
 
-COPY . /combos
+COPY . /app
 
 RUN mkdir build
 
-WORKDIR /combos/build
+WORKDIR /app/build
 
 RUN cmake -D BOOST_ROOT=/usr/local ..
 
-RUN cmake --build .
+RUN cmake --build . -j4
+
+CMD ["/app/experiments/script.sh"]
