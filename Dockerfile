@@ -13,6 +13,6 @@ RUN mkdir build && \
     cmake -D BOOST_ROOT=/usr/local .. && \
     cmake --build . -j$(nproc)
 
-RUN cp experiments/script.sh ./script.sh
+RUN cp experiments/script.sh experiments/parameters.xml ./
 
 CMD ["/app/script.sh"]
