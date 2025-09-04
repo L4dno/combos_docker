@@ -2,7 +2,7 @@
 
 # 100,000 hosts, 1 day
 
-	cp analysis/parameters.xml parameters.xml
+	cp experiments/parameters.xml parameters.xml
 	./generator
 	./execute > experiments/results_from_script.txt
 	
