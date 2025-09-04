@@ -3,7 +3,7 @@ docker-build:
 
 docker-rerun:
 	docker rm -f combos || true
-	docker run --name=combos -v "$(CURDIR)/analysis:/app/analysis" combos
+	docker run --name=combos -v "$(CURDIR)/experiments:/app/experiments" combos
 
 docker-inspect:
 	docker rm -f combos || true
